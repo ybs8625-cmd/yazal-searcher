@@ -1,6 +1,6 @@
 :root {
-  --bg: #0e0c12;
-  --card: #18141f;
+  --bg: #0a090d;
+  --card: #16121c;
   --line: #322a3d;
   --text: #f6eef8;
   --muted: #b5a3c4;
@@ -22,12 +22,12 @@ body {
 }
 
 .wrap {
-  width: min(1100px, 100%);
+  width: min(1200px, 100%);
   margin: 0 auto;
-  padding: 24px 14px 56px;
+  padding: 20px 12px 48px;
 }
 
-.hero { text-align: center; margin-bottom: 16px; }
+.hero { text-align: center; margin-bottom: 14px; }
 .badge {
   display: inline-block;
   font-size: 12px;
@@ -103,43 +103,8 @@ button.mini:hover { border-color: var(--accent); color: var(--text); }
   color: white;
   font-weight: 700;
 }
+.periods .chip.on { background: #e67700; }
 .sources .chip.on { background: #d9480f; }
-.kinds .chip.on { background: #e67700; }
-
-.posts {
-  display: grid;
-  gap: 8px;
-  margin: 10px 0 16px;
-}
-.posts:empty { display: none; }
-.posts .post {
-  display: block;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: #120e18;
-  color: #ffd6e8;
-  text-decoration: none;
-}
-.posts .post:hover { border-color: var(--accent); }
-.posts .post .meta {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-input#title {
-  width: 100%;
-  border: 1px solid var(--line);
-  background: #120e18;
-  color: var(--text);
-  border-radius: 12px;
-  padding: 14px;
-  font-size: 1rem;
-  outline: none;
-}
-input#title:focus { border-color: var(--accent); }
 
 .actions { margin-top: 12px; }
 button.primary {
@@ -172,52 +137,63 @@ button.primary:active:not(:disabled) { transform: scale(0.98); }
 .status.ok { color: #ffd28a; }
 
 .gallery {
-  columns: 2;
-  column-gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
   margin-top: 8px;
 }
 @media (min-width: 700px) {
-  .gallery { columns: 3; }
+  .gallery { grid-template-columns: repeat(3, 1fr); gap: 8px; }
 }
 @media (min-width: 1000px) {
-  .gallery { columns: 4; }
+  .gallery { grid-template-columns: repeat(4, 1fr); }
 }
 
-.gallery .item {
-  break-inside: avoid;
-  margin: 0 0 10px;
-  border-radius: 12px;
+.gallery .shot {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--line);
   background: #120e18;
-  display: block;
-  text-decoration: none;
-  color: inherit;
+  cursor: zoom-in;
+  aspect-ratio: 1;
 }
-.gallery img {
+.gallery .shot img {
   display: block;
   width: 100%;
-  height: auto;
-  vertical-align: middle;
+  height: 100%;
+  object-fit: cover;
   background: #1a1422;
-}
-.gallery .cap {
-  padding: 8px 10px;
-  font-size: 0.75rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .gallery:empty::after {
-  content: "카테고리/커뮤니티 고르고 검색하면 여기 JPG가 쭉 나와.";
+  content: "기간·카테고리·커뮤니티 고르고 불러오면 사진만 쭉 나와.";
   display: block;
+  grid-column: 1 / -1;
   text-align: center;
   color: var(--muted);
   padding: 28px 10px;
   border: 1px dashed var(--line);
   border-radius: 14px;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.92);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  cursor: zoom-out;
+}
+.lightbox[hidden] { display: none; }
+.lightbox img {
+  max-width: min(100%, 1100px);
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 footer {

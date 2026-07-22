@@ -1,169 +1,116 @@
 (() => {
   const CATEGORIES = [
-    { ko: "밀프 / 아줌마", en: "milf", kr: "아줌마" },
-    { ko: "아마추어", en: "amateur homemade", kr: "아마추어" },
-    { ko: "오피스 / 비서", en: "secretary office", kr: "비서" },
-    { ko: "선생님", en: "teacher", kr: "여선생님" },
-    { ko: "간호사", en: "nurse", kr: "간호사" },
-    { ko: "사우나 / 마사지", en: "massage sauna", kr: "마사지" },
-    { ko: "코스프레", en: "cosplay", kr: "코스프레" },
-    { ko: "교복 / 코스튬", en: "uniform cosplay", kr: "교복" },
-    { ko: "야외 / 노출", en: "outdoor public nude", kr: "야외노출" },
-    { ko: "헬스 / 피트니스", en: "gym fitness", kr: "헬스녀" },
-    { ko: "비키니 / 수영장", en: "bikini pool", kr: "비키니" },
-    { ko: "스타킹 / 레깅스", en: "stockings legs", kr: "스타킹" },
-    { ko: "큰 가슴", en: "big tits", kr: "큰가슴" },
-    { ko: "엉덩이", en: "big ass", kr: "엉덩이" },
-    { ko: "아시아", en: "asian", kr: "아시아" },
-    { ko: "일본", en: "japanese", kr: "일본" },
-    { ko: "한국", en: "korean", kr: "한국" },
-    { ko: "금발 / 서양", en: "blonde western", kr: "금발" },
-    { ko: "커플 / 셀카", en: "couple selfie", kr: "커플셀카" },
-    { ko: "GIF / 움짤", en: "gif nsfw", kr: "움짤" },
-    { ko: "은꼴 / 아슬아슬", en: "softcore teasing", kr: "은꼴" },
-    { ko: "하드 / 노골", en: "explicit nsfw", kr: "야짤" },
+    { ko: "밀프 / 아줌마", kr: "아줌마" },
+    { ko: "아마추어", kr: "아마추어" },
+    { ko: "오피스 / 비서", kr: "비서" },
+    { ko: "선생님", kr: "여선생님" },
+    { ko: "간호사", kr: "간호사" },
+    { ko: "사우나 / 마사지", kr: "마사지" },
+    { ko: "코스프레", kr: "코스프레" },
+    { ko: "교복 / 코스튬", kr: "코스튬" },
+    { ko: "야외 / 노출", kr: "야외노출" },
+    { ko: "헬스 / 피트니스", kr: "헬스녀" },
+    { ko: "비키니 / 수영장", kr: "비키니" },
+    { ko: "스타킹 / 레깅스", kr: "스타킹" },
+    { ko: "큰 가슴", kr: "큰가슴" },
+    { ko: "엉덩이", kr: "엉덩이" },
+    { ko: "아시아", kr: "아시아" },
+    { ko: "일본", kr: "일본" },
+    { ko: "한국", kr: "한국" },
+    { ko: "금발 / 서양", kr: "금발" },
+    { ko: "커플 / 셀카", kr: "커플셀카" },
+    { ko: "GIF / 움짤", kr: "움짤" },
+    { ko: "은꼴 / 아슬아슬", kr: "은꼴" },
+    { ko: "하드 / 노골", kr: "야짤" },
   ];
 
-  // 커뮤니티별 검색 URL 생성 (실제 이미지 다운로드/저장 안 함 — 검색 페이지로 연결)
-  const SOURCES = [
-    {
-      id: "google",
-      name: "구글 이미지",
-      lang: "en",
-      defaultOn: true,
-      build: (en) =>
-        `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(en + " nsfw")}`,
-    },
-    {
-      id: "bing",
-      name: "빙 이미지",
-      lang: "en",
-      defaultOn: true,
-      build: (en) =>
-        `https://www.bing.com/images/search?q=${encodeURIComponent(en + " nsfw")}`,
-    },
-    {
-      id: "reddit",
-      name: "레딧",
-      lang: "en",
-      defaultOn: true,
-      build: (en) =>
-        `https://www.reddit.com/search/?q=${encodeURIComponent(en)}&type=link`,
-    },
-    {
-      id: "x",
-      name: "X (트위터)",
-      lang: "en",
-      defaultOn: true,
-      build: (en, kr) =>
-        `https://x.com/search?q=${encodeURIComponent(en || kr)}&src=typed_query&f=image`,
-    },
-    {
-      id: "duck",
-      name: "덕덕고 이미지",
-      lang: "en",
-      defaultOn: false,
-      build: (en) =>
-        `https://duckduckgo.com/?q=${encodeURIComponent(en + " nsfw")}&iax=images&ia=images`,
-    },
-    {
-      id: "naver",
-      name: "네이버 이미지",
-      lang: "kr",
-      defaultOn: true,
-      build: (_en, kr) =>
-        `https://search.naver.com/search.naver?where=image&query=${encodeURIComponent(kr)}`,
-    },
-    {
-      id: "daum",
-      name: "다음 이미지",
-      lang: "kr",
-      defaultOn: false,
-      build: (_en, kr) =>
-        `https://search.daum.net/search?w=img&q=${encodeURIComponent(kr)}`,
-    },
+  // 한국 커뮤니티만
+  const COMMUNITIES = [
     {
       id: "dc",
-      name: "디시 검색",
-      lang: "kr",
-      defaultOn: false,
-      build: (_en, kr) =>
-        `https://search.dcinside.com/post/q/${encodeURIComponent(kr)}`,
+      name: "디시인사이드",
+      site: "dcinside.com",
+      hostRe: /dcinside\.com|dcimg\d*\.dcinside\.com|nstatic/i,
+      pages: [
+        (q) => `https://search.dcinside.com/img/q/${encodeURIComponent(q)}`,
+        (q) => `https://search.dcinside.com/post/q/${encodeURIComponent(q)}`,
+      ],
+      defaultOn: true,
     },
     {
-      id: "youtube",
-      name: "유튜브 (참고)",
-      lang: "en",
-      defaultOn: false,
-      build: (en) =>
-        `https://www.youtube.com/results?search_query=${encodeURIComponent(en)}`,
+      id: "ou",
+      name: "오늘의유머",
+      site: "todayhumor.co.kr",
+      hostRe: /todayhumor\.co\.kr/i,
+      pages: [
+        (q) =>
+          `https://www.todayhumor.co.kr/board/list.php?table=humorbest&kind=search&keyfield=subject&keyword=${encodeURIComponent(q)}`,
+      ],
+      defaultOn: true,
     },
-  ];
-
-  const DICT = [
-    ["옆집 아줌마", "neighbor milf", "옆집아줌마"],
-    ["옆집아줌마", "neighbor milf", "옆집아줌마"],
-    ["아줌마", "milf", "아줌마"],
-    ["엄마친구", "mom friend milf", "엄마친구"],
-    ["새엄마", "stepmother", "새엄마"],
-    ["여동생", "stepsister", "여동생"],
-    ["누나", "older sister", "누나"],
-    ["여사친", "female friend", "여사친"],
-    ["여친구", "girlfriend", "여친구"],
-    ["와이프", "wife", "와이프"],
-    ["비서", "secretary", "비서"],
-    ["여비서", "secretary", "여비서"],
-    ["선생님", "teacher", "선생님"],
-    ["여선생님", "female teacher", "여선생님"],
-    ["간호사", "nurse", "간호사"],
-    ["사우나", "sauna", "사우나"],
-    ["마사지", "massage", "마사지"],
-    ["자취방", "apartment selfie", "자취방"],
-    ["원룸", "one room", "원룸"],
-    ["모텔", "motel", "모텔"],
-    ["호텔", "hotel", "호텔"],
-    ["야외", "outdoor", "야외"],
-    ["노출", "exhibitionist nude", "노출"],
-    ["피팅룸", "fitting room", "피팅룸"],
-    ["헬스장", "gym", "헬스장"],
-    ["수영장", "pool", "수영장"],
-    ["비키니", "bikini", "비키니"],
-    ["코스프레", "cosplay", "코스프레"],
-    ["메이드", "maid", "메이드"],
-    ["교복", "school uniform", "교복"],
-    ["스타킹", "stockings", "스타킹"],
-    ["레깅스", "leggings", "레깅스"],
-    ["움짤", "gif", "움짤"],
-    ["야짤", "nsfw pic", "야짤"],
-    ["은꼴", "softcore", "은꼴"],
-    ["셀카", "selfie", "셀카"],
-    ["일본", "japanese", "일본"],
-    ["한국", "korean", "한국"],
-    ["금발", "blonde", "금발"],
-    ["큰가슴", "big tits", "큰가슴"],
-    ["엉덩이", "big ass", "엉덩이"],
-    ["아마추어", "amateur", "아마추어"],
-    ["개인촬영", "amateur homemade", "개인촬영"],
-    ["커플", "couple", "커플"],
+    {
+      id: "ilbe",
+      name: "일베",
+      site: "ilbe.com",
+      hostRe: /ilbe\.com|ncache\.ilbe\.com/i,
+      pages: [
+        (q) => `https://www.ilbe.com/search?keyword=${encodeURIComponent(q)}`,
+        (q) =>
+          `https://www.ilbe.com/?act=search&docType=doc&searchType=title_content&keyword=${encodeURIComponent(q)}`,
+      ],
+      defaultOn: true,
+    },
+    {
+      id: "fmk",
+      name: "에펨코리아",
+      site: "fmkorea.com",
+      hostRe: /fmkorea\.com/i,
+      pages: [
+        (q) =>
+          `https://www.fmkorea.com/search.php?mid=humor&search_keyword=${encodeURIComponent(q)}&search_target=title_content`,
+      ],
+      defaultOn: true,
+    },
+    {
+      id: "theqoo",
+      name: "더쿠",
+      site: "theqoo.net",
+      hostRe: /theqoo\.net/i,
+      pages: [
+        (q) => `https://theqoo.net/search/post?keyword=${encodeURIComponent(q)}`,
+      ],
+      defaultOn: false,
+    },
+    {
+      id: "ruli",
+      name: "루리웹",
+      site: "ruliweb.com",
+      hostRe: /ruliweb\.com/i,
+      pages: [
+        (q) =>
+          `https://bbs.ruliweb.com/search?search_type=subject&search=${encodeURIComponent(q)}`,
+      ],
+      defaultOn: false,
+    },
   ];
 
   const selectedCats = new Set();
-  const selectedSrc = new Set(SOURCES.filter((s) => s.defaultOn).map((s) => s.id));
+  const selectedSrc = new Set(
+    COMMUNITIES.filter((c) => c.defaultOn).map((c) => c.id)
+  );
 
   const catsEl = document.getElementById("cats");
   const sourcesEl = document.getElementById("sources");
   const titleEl = document.getElementById("title");
-  const previewKo = document.getElementById("previewKo");
-  const previewEn = document.getElementById("previewEn");
-  const previewSrc = document.getElementById("previewSrc");
-  const linksEl = document.getElementById("links");
+  const statusEl = document.getElementById("status");
+  const galleryEl = document.getElementById("gallery");
+  const searchBtn = document.getElementById("searchBtn");
 
   CATEGORIES.forEach((c, i) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "chip";
     btn.textContent = c.ko;
-    btn.dataset.i = String(i);
     btn.addEventListener("click", () => {
       if (selectedCats.has(i)) {
         selectedCats.delete(i);
@@ -172,170 +119,225 @@
         selectedCats.add(i);
         btn.classList.add("on");
       }
-      updatePreview();
     });
     catsEl.appendChild(btn);
   });
 
-  SOURCES.forEach((s) => {
+  COMMUNITIES.forEach((c) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "chip" + (selectedSrc.has(s.id) ? " on" : "");
-    btn.textContent = s.name;
-    btn.dataset.id = s.id;
+    btn.className = "chip" + (selectedSrc.has(c.id) ? " on" : "");
+    btn.textContent = c.name;
     btn.addEventListener("click", () => {
-      if (selectedSrc.has(s.id)) {
-        selectedSrc.delete(s.id);
+      if (selectedSrc.has(c.id)) {
+        selectedSrc.delete(c.id);
         btn.classList.remove("on");
       } else {
-        selectedSrc.add(s.id);
+        selectedSrc.add(c.id);
         btn.classList.add("on");
       }
-      updatePreview();
     });
     sourcesEl.appendChild(btn);
   });
 
-  function translate(text) {
-    let rest = (text || "").trim();
-    if (!rest) return { en: "", kr: "" };
+  function keywords() {
+    const parts = [...selectedCats].map((i) => CATEGORIES[i].kr);
+    const extra = titleEl.value.trim();
+    if (extra) parts.push(extra);
+    if (!parts.length) parts.push("야짤");
+    return [...new Set(parts)].join(" ");
+  }
 
-    const enFound = [];
-    const krFound = [];
-    const sorted = [...DICT].sort((a, b) => b[0].length - a[0].length);
-    for (const [ko, en, kr] of sorted) {
-      if (rest.includes(ko)) {
-        enFound.push(en);
-        krFound.push(kr || ko);
-        rest = rest.split(ko).join(" ");
-      }
+  function isJpg(url) {
+    if (!url) return false;
+    try {
+      const path = decodeURIComponent(url.split("?")[0]).toLowerCase();
+      return path.endsWith(".jpg") || path.endsWith(".jpeg");
+    } catch {
+      const path = url.split("?")[0].toLowerCase();
+      return path.endsWith(".jpg") || path.endsWith(".jpeg");
     }
-    rest = rest.replace(/\s+/g, " ").trim();
+  }
 
-    if (!enFound.length && /[가-힣]/.test(text)) {
-      return { en: guessEn(text), kr: text.trim() };
+  function normalizeUrl(u) {
+    if (!u) return null;
+    let s = u.trim().replace(/&amp;/g, "&");
+    if (s.startsWith("//")) s = "https:" + s;
+    if (!/^https?:\/\//i.test(s)) return null;
+    if (/bing\.com|microsoft\.com|googleusercontent|gstatic|doubleclick/i.test(s)) {
+      return null;
     }
-    return {
-      en: enFound.join(" "),
-      kr: (krFound.join(" ") + (rest ? " " + rest : "")).trim() || text.trim(),
+    return s;
+  }
+
+  function extractJpgs(text) {
+    const found = new Set();
+
+    // Bing mediaurl=
+    for (const m of text.matchAll(/mediaurl=(https?%3a%2f%2f[^&\s"'<>]+)/gi)) {
+      try {
+        const u = normalizeUrl(decodeURIComponent(m[1]));
+        if (u && isJpg(u)) found.add(u);
+      } catch (_) {}
+    }
+
+    // murl / ou style
+    for (const m of text.matchAll(
+      /(?:murl|mediaurl|ou|imgurl|originalUrl)\s*[:=]\s*["']?(https?:\/\/[^"'&\s<>]+)/gi
+    )) {
+      const u = normalizeUrl(m[1]);
+      if (u && isJpg(u)) found.add(u);
+    }
+
+    // plain jpg links
+    for (const m of text.matchAll(
+      /https?:\/\/[^\s"'<>)\\]+?\.(?:jpg|jpeg)(?:\?[^\s"'<>)\\]*)?/gi
+    )) {
+      const u = normalizeUrl(m[0].replace(/[.,;)]+$/, ""));
+      if (u && isJpg(u)) found.add(u);
+    }
+
+    // markdown images ![alt](url)
+    for (const m of text.matchAll(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi)) {
+      const u = normalizeUrl(m[1]);
+      if (u && isJpg(u)) found.add(u);
+    }
+
+    return [...found];
+  }
+
+  async function fetchText(url, asHtml) {
+    const jina = `https://r.jina.ai/${url}`;
+    const headers = {
+      Accept: asHtml ? "text/html" : "text/plain",
+      "X-Return-Format": asHtml ? "html" : "markdown",
     };
+    const r = await fetch(jina, { headers });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.text();
   }
 
-  function guessEn(text) {
-    if (text.includes("아줌")) return "milf";
-    if (text.includes("비서")) return "secretary";
-    if (text.includes("선생")) return "teacher";
-    if (text.includes("간호")) return "nurse";
-    if (text.includes("마사") || text.includes("안마")) return "massage";
-    if (text.includes("일본")) return "japanese";
-    if (text.includes("한국")) return "korean";
-    if (text.includes("움짤") || text.includes("gif")) return "gif nsfw";
-    return "nsfw";
+  async function fromCommunityPages(community, q) {
+    const out = [];
+    for (const make of community.pages || []) {
+      try {
+        const html = await fetchText(make(q), true);
+        for (const src of extractJpgs(html)) {
+          if (community.hostRe && !community.hostRe.test(src)) continue;
+          out.push(src);
+        }
+      } catch (_) {}
+    }
+    return out;
   }
 
-  function buildQuery() {
-    const catKo = [...selectedCats].map((i) => CATEGORIES[i].ko);
-    const catEn = [...selectedCats].map((i) => CATEGORIES[i].en);
-    const catKr = [...selectedCats].map((i) => CATEGORIES[i].kr);
-
-    const titleKo = titleEl.value.trim();
-    const t = translate(titleKo);
-
-    const koParts = [...catKo];
-    if (titleKo) koParts.push(titleKo);
-
-    const enParts = [...catEn];
-    if (t.en) enParts.push(t.en);
-
-    const krParts = [...catKr];
-    if (t.kr) krParts.push(t.kr);
-    if (!krParts.length && titleKo) krParts.push(titleKo);
-
-    const en = [...new Set(enParts.join(" ").split(/\s+/).filter(Boolean))].join(" ");
-    const kr = [...new Set(krParts.join(" ").split(/\s+/).filter(Boolean))].join(" ");
-
-    const srcNames = SOURCES.filter((s) => selectedSrc.has(s.id)).map((s) => s.name);
-
-    return {
-      ko: koParts.join(" · ") || "(선택 없음)",
-      en: en || "nsfw",
-      kr: kr || "야짤",
-      srcNames,
-    };
+  async function fromBingSite(community, q) {
+    const query = `site:${community.site} ${q} 야짤`;
+    const out = [];
+    for (const first of [1, 35]) {
+      const bing =
+        "http://www.bing.com/images/search?q=" +
+        encodeURIComponent(query) +
+        `&adlt=off&first=${first}`;
+      try {
+        const text = await fetchText(bing, false);
+        const urls = extractJpgs(text);
+        for (const src of urls) {
+          // 커뮤니티 CDN이면 우선, 아니면 site 검색 결과도 일단 포함
+          out.push(src);
+        }
+      } catch (_) {}
+    }
+    // CDN 매칭 있으면 그것만, 없으면 전체
+    const cdn = out.filter((u) => community.hostRe.test(u));
+    return cdn.length ? cdn : out;
   }
 
-  function buildLinks() {
-    const q = buildQuery();
-    return SOURCES.filter((s) => selectedSrc.has(s.id)).map((s) => ({
-      name: s.name,
-      url: s.build(q.en, q.kr),
-      query: s.lang === "kr" ? q.kr : q.en,
-    }));
-  }
-
-  function updatePreview() {
-    const q = buildQuery();
-    previewKo.textContent = q.ko;
-    previewEn.textContent = q.en;
-    previewSrc.textContent = q.srcNames.length ? q.srcNames.join(", ") : "(커뮤니티 선택 없음)";
-  }
-
-  function renderLinks(links) {
-    linksEl.innerHTML = "";
-    links.forEach((l) => {
-      const li = document.createElement("li");
+  function renderGallery(items) {
+    galleryEl.innerHTML = "";
+    items.forEach((it) => {
       const a = document.createElement("a");
-      a.href = l.url;
+      a.className = "item";
+      a.href = it.src;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.innerHTML = `<strong>${l.name}</strong><span class="meta">검색어: ${l.query}</span>`;
-      li.appendChild(a);
-      linksEl.appendChild(li);
+
+      const img = document.createElement("img");
+      img.src = it.src;
+      img.alt = it.name;
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.referrerPolicy = "no-referrer";
+      img.onerror = () => a.remove();
+
+      const cap = document.createElement("div");
+      cap.className = "cap";
+      cap.textContent = it.name;
+
+      a.appendChild(img);
+      a.appendChild(cap);
+      galleryEl.appendChild(a);
     });
   }
 
-  function runSearch(openTabs) {
-    const links = buildLinks();
-    if (!links.length) {
-      alert("커뮤니티를 하나 이상 골라줘!");
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = "status" + (kind ? ` ${kind}` : "");
+  }
+
+  async function runSearch() {
+    const communities = COMMUNITIES.filter((c) => selectedSrc.has(c.id));
+    if (!communities.length) {
+      setStatus("커뮤니티를 하나 이상 골라줘.", "error");
       return;
     }
-    renderLinks(links);
-    if (openTabs) {
-      // 브라우저 팝업 차단 대비: 첫 탭은 현재 창 이동 없이 순차 open
-      links.forEach((l, i) => {
-        setTimeout(() => window.open(l.url, "_blank", "noopener,noreferrer"), i * 250);
-      });
+
+    const q = keywords();
+    searchBtn.disabled = true;
+    galleryEl.innerHTML = "";
+
+    const seen = new Set();
+    const all = [];
+
+    for (const c of communities) {
+      setStatus(`${c.name} JPG 수집 중... (현재 ${all.length}장)`, "");
+
+      let urls = [];
+      try {
+        const direct = await fromCommunityPages(c, q);
+        urls.push(...direct);
+      } catch (_) {}
+
+      try {
+        const bing = await fromBingSite(c, q);
+        urls.push(...bing);
+      } catch (_) {}
+
+      for (const src of urls) {
+        const key = src.split("?")[0];
+        if (seen.has(key)) continue;
+        if (!isJpg(src)) continue;
+        seen.add(key);
+        all.push({ src, name: c.name });
+      }
+      renderGallery(all);
     }
+
+    searchBtn.disabled = false;
+    if (!all.length) {
+      setStatus(
+        "JPG를 못 모았어. 카테고리를 바꾸거나 커뮤니티를 더 골라봐.",
+        "error"
+      );
+      return;
+    }
+    setStatus(`JPG ${all.length}장 로드됨`, "ok");
   }
 
-  document.getElementById("searchBtn").addEventListener("click", () => runSearch(true));
-
-  document.getElementById("luckyBtn").addEventListener("click", () => {
-    selectedCats.clear();
-    catsEl.querySelectorAll(".chip").forEach((c) => c.classList.remove("on"));
-    const picks = new Set();
-    while (picks.size < 2) picks.add(Math.floor(Math.random() * CATEGORIES.length));
-    picks.forEach((i) => {
-      selectedCats.add(i);
-      catsEl.querySelector(`.chip[data-i="${i}"]`)?.classList.add("on");
+  searchBtn.addEventListener("click", () => {
+    runSearch().catch((e) => {
+      searchBtn.disabled = false;
+      setStatus("오류: " + (e.message || e), "error");
     });
-    const lucky = [
-      "옆집 아줌마",
-      "여비서",
-      "사우나 마사지",
-      "코스프레",
-      "비키니",
-      "헬스장",
-      "움짤",
-      "은꼴",
-      "커플 셀카",
-    ];
-    titleEl.value = lucky[Math.floor(Math.random() * lucky.length)];
-    updatePreview();
-    runSearch(true);
   });
-
-  titleEl.addEventListener("input", updatePreview);
-  updatePreview();
 })();

@@ -593,19 +593,20 @@
   function updateFooterBtns() {
     var list = filteredItems();
     var left = list.length - visibleCount;
-    if (running) {
-      moreBtn.hidden = true;
-      moreSearchBtn.hidden = true;
-      return;
-    }
+    // 검색 중이어도 이미 확보·필터된 분량은 더보기로 볼 수 있게
     if (left > 0) {
       moreBtn.hidden = false;
+      moreBtn.disabled = false;
       moreBtn.textContent =
         "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
       moreSearchBtn.hidden = true;
       return;
     }
     moreBtn.hidden = true;
+    if (running) {
+      moreSearchBtn.hidden = true;
+      return;
+    }
     if (session && !session.done && allItems.length > 0) {
       moreSearchBtn.hidden = false;
       moreSearchBtn.textContent = "추가검색 · 다음 조회수 자료";

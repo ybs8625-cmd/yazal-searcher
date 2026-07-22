@@ -1,9 +1,11 @@
 (() => {
-  // 은꼴사·야짤로 유명한 곳 3곳만 고정 (선택 UI 없음)
+  // 은꼴사·야짤 유명 3곳 고정
   const SOURCES = [
     {
       name: "아카 야짤",
       site: "arca.live",
+      // 보드 자체가 야짤이라 제목에 '야짤' 없어도 OK
+      boardMode: true,
       urls: (range) => [
         `https://arca.live/b/yazzal?mode=best&sort=rating&range=${range}`,
         `https://arca.live/b/shade?mode=best&sort=rating&range=${range}`,
@@ -12,109 +14,173 @@
     {
       name: "일베",
       site: "ilbe.com",
+      boardMode: false,
       urls: () => [
         "https://www.ilbe.com/search?keyword=%EC%95%BC%EC%A7%A4",
         "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4%EC%82%AC",
-        "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4",
       ],
     },
     {
       name: "해연갤",
       site: "hygall.com",
+      boardMode: false,
       urls: () => [
         "https://hygall.com/?sort=hit",
         "https://hygall.com/search?keyword=%EC%9D%80%EA%BC%B4",
-        "https://hygall.com/search?keyword=%EC%95%BC%EC%A7%A4",
       ],
     },
   ];
 
   const PERIODS = [
-    { id: "day", ko: "일간", arca: "24h", take: 18 },
-    { id: "week", ko: "주간", arca: "7d", take: 24 },
-    { id: "month", ko: "월간", arca: "30d", take: 30 },
+    { id: "day", ko: "일간", arca: "24h", take: 15 },
+    { id: "week", ko: "주간", arca: "7d", take: 20 },
+    { id: "month", ko: "월간", arca: "30d", take: 25 },
   ];
 
-  // 제목에 하나라도 있어야 함
-  const TITLE_OK = /야짤|은꼴사|은꼴|움짤|\bgif\b/i;
-  // 애니/그림 제목 제외
+  const TITLE_OK = /야짤|은꼴사|은꼴|움짤|gif/i;
   const TITLE_BAN =
-    /애니|만화|일러스트|픽시브|pixiv|hentai|팬아트|동인|니케|블루아카|AI\s*그림|에이아이|2D|와후|waifu|단보루|젤보루|그림체/i;
+    /애니|만화|일러스트|픽시브|pixiv|hentai|팬아트|동인|니케|블루아카|AI\s*그림|와후|waifu|단보루|젤보루/i;
   const URL_BAN =
-    /pixiv|pximg|danbooru|donmai|gelbooru|sankaku|rule34|booru|zerochan|wixmp|deviantart|waifu|hentai|anime|manga|nhentai|civitai|novelai|aiart/i;
+    /pixiv|pximg|danbooru|donmai|gelbooru|sankaku|rule34|booru|zerochan|wixmp|waifu|hentai|anime|manga|nhentai|civitai|novelai|aiart/i;
 
-  let selectedPeriod = "day";
-  let abortCtrl = null;
-  let running = false;
+  var selectedPeriod = "day";
+  var abortCtrl = null;
+  var running = false;
 
-  const periodsEl = document.getElementById("periods");
-  const statusEl = document.getElementById("status");
-  const galleryEl = document.getElementById("gallery");
-  const searchBtn = document.getElementById("searchBtn");
-  const stopBtn = document.getElementById("stopBtn");
-  const lightbox = document.getElementById("lightbox");
-  const lightboxImg = document.getElementById("lightboxImg");
+  var periodsEl = document.getElementById("periods");
+  var statusEl = document.getElementById("status");
+  var galleryEl = document.getElementById("gallery");
+  var searchBtn = document.getElementById("searchBtn");
+  var stopBtn = document.getElementById("stopBtn");
+  var lightbox = document.getElementById("lightbox");
+  var lightboxImg = document.getElementById("lightboxImg");
 
-  PERIODS.forEach((p) => {
-    const btn = document.createElement("button");
+  if (!searchBtn || !statusEl || !galleryEl || !periodsEl) {
+    alert("페이지 로딩 오류. 새로고침 해줘.");
+    return;
+  }
+
+  PERIODS.forEach(function (p) {
+    var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "chip" + (p.id === selectedPeriod ? " on" : "");
     btn.textContent = p.ko;
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", function () {
       selectedPeriod = p.id;
-      periodsEl.querySelectorAll(".chip").forEach((b) => b.classList.remove("on"));
+      periodsEl.querySelectorAll(".chip").forEach(function (b) {
+        b.classList.remove("on");
+      });
       btn.classList.add("on");
     });
     periodsEl.appendChild(btn);
   });
 
   function period() {
-    return PERIODS.find((p) => p.id === selectedPeriod) || PERIODS[0];
+    for (var i = 0; i < PERIODS.length; i++) {
+      if (PERIODS[i].id === selectedPeriod) return PERIODS[i];
+    }
+    return PERIODS[0];
   }
 
   function setStatus(msg, kind) {
-    statusEl.textContent = msg;
-    statusEl.className = "status" + (kind ? ` ${kind}` : "");
+    statusEl.textContent = msg || "";
+    statusEl.className = "status" + (kind ? " " + kind : "");
   }
 
   function setRunning(on) {
     running = on;
     searchBtn.disabled = on;
     stopBtn.disabled = !on;
+    searchBtn.textContent = on ? "검색 중..." : "검색";
   }
 
-  function thrownIfAborted() {
-    if (abortCtrl?.signal?.aborted) {
-      const e = new Error("STOPPED");
+  function isAborted() {
+    return !!(abortCtrl && abortCtrl.signal && abortCtrl.signal.aborted);
+  }
+
+  function throwIfAborted() {
+    if (isAborted()) {
+      var e = new Error("STOPPED");
       e.name = "AbortError";
       throw e;
     }
   }
 
+  function withTimeout(promise, ms) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var t = setTimeout(function () {
+        if (done) return;
+        done = true;
+        reject(new Error("시간초과"));
+      }, ms);
+      promise.then(
+        function (v) {
+          if (done) return;
+          done = true;
+          clearTimeout(t);
+          resolve(v);
+        },
+        function (err) {
+          if (done) return;
+          done = true;
+          clearTimeout(t);
+          reject(err);
+        }
+      );
+    });
+  }
+
   async function fetchText(url) {
-    thrownIfAborted();
-    const r = await fetch("https://r.jina.ai/" + url, {
+    throwIfAborted();
+    var opts = {
       signal: abortCtrl.signal,
       headers: {
         Accept: "text/html",
         "X-Return-Format": "html",
-        "X-Timeout": "20",
+        "X-Timeout": "15",
       },
-    });
-    thrownIfAborted();
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.text();
+    };
+
+    // 1) jina
+    try {
+      var r = await withTimeout(fetch("https://r.jina.ai/" + url, opts), 18000);
+      throwIfAborted();
+      if (r.ok) {
+        var text = await r.text();
+        if (text && text.length > 200) return text;
+      }
+    } catch (e) {
+      if (e.name === "AbortError" || e.message === "STOPPED") throw e;
+    }
+
+    // 2) allorigins 백업
+    try {
+      var r2 = await withTimeout(
+        fetch(
+          "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+          { signal: abortCtrl.signal }
+        ),
+        18000
+      );
+      throwIfAborted();
+      if (r2.ok) return await r2.text();
+    } catch (e) {
+      if (e.name === "AbortError" || e.message === "STOPPED") throw e;
+    }
+
+    throw new Error("불러오기 실패");
   }
 
   function normalizeUrl(u, base) {
     if (!u) return null;
-    let s = String(u).trim().replace(/&amp;/g, "&");
-    if (!s || s.startsWith("data:")) return null;
-    if (s.startsWith("//")) s = "https:" + s;
-    if (s.startsWith("/") && base) {
+    var s = String(u).trim().replace(/&amp;/g, "&");
+    if (!s || s.indexOf("data:") === 0) return null;
+    if (s.indexOf("//") === 0) s = "https:" + s;
+    if (s.charAt(0) === "/" && base) {
       try {
         s = new URL(s, base).href;
-      } catch {
+      } catch (e) {
         return null;
       }
     }
@@ -123,94 +189,108 @@
   }
 
   function parseViews(chunk) {
-    const m =
+    var m =
       chunk.match(/조회\s*수?\s*[:：]?\s*([\d,]+)/i) ||
       chunk.match(/views?\s*[:：]?\s*([\d,]+)/i) ||
       chunk.match(/\b([\d,]{3,7})\b/);
     return m ? parseInt(m[1].replace(/,/g, ""), 10) || 0 : 0;
   }
 
-  function titleOk(title) {
-    if (!title) return false;
+  function titleOk(title, boardMode) {
+    if (!title || title.length < 2) return false;
     if (TITLE_BAN.test(title)) return false;
+    if (boardMode) return true; // 야짤 보드면 제목 자유
     return TITLE_OK.test(title);
   }
 
-  function extractPosts(html, site, listUrl) {
-    const posts = [];
-    const seen = new Set();
-    const re =
+  function extractPosts(html, site, listUrl, boardMode) {
+    var posts = [];
+    var seen = {};
+    var re =
       /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>|\[([^\]]{2,160})\]\((https?:\/\/[^)]+)\)/gi;
-    let m;
+    var m;
     while ((m = re.exec(html))) {
-      let href = m[1] || m[4];
-      let title = (m[2] || m[3] || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      var href = m[1] || m[4];
+      var title = (m[2] || m[3] || "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
       href = normalizeUrl(href, listUrl);
-      if (!href || !title || title.length < 2) continue;
-      if (!href.includes(site)) continue;
-      if (/search|login|join|notice|공지|\.css|\.js\b/i.test(href + title)) continue;
-      if (!/\/\d{5,}|(view|article|post|bbs|board|b\/[^/]+\/\d+)/i.test(href)) continue;
-      if (!titleOk(title)) continue;
-      if (seen.has(href)) continue;
-      const around = html.slice(Math.max(0, m.index - 60), Math.min(html.length, m.index + 260));
-      seen.add(href);
-      posts.push({ title, href, views: parseViews(around) });
+      if (!href || !title) continue;
+      if (href.indexOf(site) === -1) continue;
+      if (/search|login|join|notice|공지|\.css|\.js\b|javascript:/i.test(href + title))
+        continue;
+      if (!/\/\d{5,}|(view|article|post|bbs|board|b\/[^\/]+\/\d+)/i.test(href)) continue;
+      if (!titleOk(title, boardMode)) continue;
+      if (seen[href]) continue;
+      var around = html.slice(
+        Math.max(0, m.index - 60),
+        Math.min(html.length, m.index + 260)
+      );
+      seen[href] = 1;
+      posts.push({ title: title, href: href, views: parseViews(around) });
     }
     return posts;
   }
 
   function extractImages(html, base) {
-    const out = new Set();
-    const push = (raw) => {
-      const u = normalizeUrl(raw, base);
+    var out = [];
+    var seen = {};
+    function push(raw) {
+      var u = normalizeUrl(raw, base);
       if (!u) return;
       if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u.split("#")[0])) return;
-      if (/sprite|icon|logo|emoji|avatar|banner|ads?|pixel|favicon|emoticon/i.test(u)) return;
+      if (/sprite|icon|logo|emoji|avatar|banner|ads?|pixel|favicon|emoticon/i.test(u))
+        return;
       if (URL_BAN.test(u)) return;
-      out.add(u.split("#")[0]);
-    };
-    for (const x of html.matchAll(
-      /(?:src|data-src|data-original|data-lazy)\s*=\s*["']([^"']+)["']/gi
-    )) {
-      push(x[1]);
+      u = u.split("#")[0];
+      if (seen[u]) return;
+      seen[u] = 1;
+      out.push(u);
     }
-    for (const x of html.matchAll(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi)) push(x[1]);
-    for (const x of html.matchAll(
-      /https?:\/\/[^\s"'<>)\\]+?\.(?:jpe?g|png|webp|gif)(?:\?[^\s"'<>)\\]*)?/gi
-    )) {
-      push(x[0].replace(/[.,;)]+$/, ""));
-    }
-    return [...out];
+
+    var x;
+    var re1 = /(?:src|data-src|data-original|data-lazy)\s*=\s*["']([^"']+)["']/gi;
+    while ((x = re1.exec(html))) push(x[1]);
+    var re2 = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi;
+    while ((x = re2.exec(html))) push(x[1]);
+    var re3 =
+      /https?:\/\/[^\s"'<>)\\]+?\.(?:jpe?g|png|webp|gif)(?:\?[^\s"'<>)\\]*)?/gi;
+    while ((x = re3.exec(html))) push(x[0].replace(/[.,;)]+$/, ""));
+    return out;
   }
 
   function renderGallery(images) {
     galleryEl.innerHTML = "";
-    images.forEach((src) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "shot";
-      const img = document.createElement("img");
-      img.src = src;
-      img.alt = "";
-      img.loading = "lazy";
-      img.decoding = "async";
-      img.referrerPolicy = "no-referrer";
-      img.onerror = () => btn.remove();
-      btn.appendChild(img);
-      btn.onclick = () => {
-        lightboxImg.src = src;
-        lightbox.hidden = false;
-      };
-      galleryEl.appendChild(btn);
-    });
+    for (var i = 0; i < images.length; i++) {
+      (function (src) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "shot";
+        var img = document.createElement("img");
+        img.src = src;
+        img.alt = "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        img.onerror = function () {
+          if (btn.parentNode) btn.parentNode.removeChild(btn);
+        };
+        btn.appendChild(img);
+        btn.onclick = function () {
+          lightboxImg.src = src;
+          lightbox.hidden = false;
+        };
+        galleryEl.appendChild(btn);
+      })(images[i]);
+    }
   }
 
-  lightbox.onclick = () => {
+  lightbox.onclick = function () {
     lightbox.hidden = true;
     lightboxImg.removeAttribute("src");
   };
 
-  stopBtn.onclick = () => {
+  stopBtn.onclick = function () {
     if (!running || !abortCtrl) return;
     abortCtrl.abort();
     setStatus("중지됨", "ok");
@@ -218,80 +298,117 @@
   };
 
   async function runSearch() {
-    const p = period();
-    abortCtrl = new AbortController();
+    setStatus("검색 시작...", "");
     setRunning(true);
     galleryEl.innerHTML = "";
 
-    const posts = [];
-    const seenPost = new Set();
-    const images = [];
-    const seenImg = new Set();
+    var p = period();
+    abortCtrl = new AbortController();
+
+    var posts = [];
+    var seenPost = {};
+    var images = [];
+    var seenImg = {};
+    var failCount = 0;
 
     try {
-      for (const src of SOURCES) {
-        thrownIfAborted();
-        setStatus(`${src.name} 목록 읽는 중...`);
-        for (const url of src.urls(p.arca)) {
-          thrownIfAborted();
+      for (var s = 0; s < SOURCES.length; s++) {
+        throwIfAborted();
+        var src = SOURCES[s];
+        setStatus(src.name + " 읽는 중...");
+        var urls = src.urls(p.arca);
+        for (var u = 0; u < urls.length; u++) {
+          throwIfAborted();
           try {
-            const html = await fetchText(url);
-            for (const post of extractPosts(html, src.site, url)) {
-              if (seenPost.has(post.href)) continue;
-              seenPost.add(post.href);
-              posts.push(post);
+            var html = await fetchText(urls[u]);
+            var found = extractPosts(html, src.site, urls[u], src.boardMode);
+            for (var i = 0; i < found.length; i++) {
+              if (seenPost[found[i].href]) continue;
+              seenPost[found[i].href] = 1;
+              posts.push(found[i]);
             }
+            // 목록에 썸네일이 있으면 바로 추가 (반응 빨리)
+            var thumbs = extractImages(html, urls[u]);
+            for (var t = 0; t < thumbs.length; t++) {
+              if (seenImg[thumbs[t]]) continue;
+              seenImg[thumbs[t]] = 1;
+              images.push(thumbs[t]);
+            }
+            if (thumbs.length) renderGallery(images);
+            setStatus(
+              src.name + " · 글 " + found.length + "개 · 사진 " + images.length + "장"
+            );
           } catch (e) {
-            if (e.name === "AbortError") throw e;
+            if (e.name === "AbortError" || e.message === "STOPPED") throw e;
+            failCount++;
+            setStatus(src.name + " 실패, 다음으로...");
           }
         }
       }
 
-      posts.sort((a, b) => b.views - a.views);
-      const top = posts.slice(0, p.take);
+      posts.sort(function (a, b) {
+        return b.views - a.views;
+      });
+      var top = posts.slice(0, p.take);
 
-      if (!top.length) {
-        setStatus("제목에 야짤/은꼴 들어간 글을 못 찾았어.", "error");
-        setRunning(false);
-        return;
-      }
-
-      for (let i = 0; i < top.length; i++) {
-        thrownIfAborted();
-        const post = top[i];
-        setStatus(`사진 수집 ${i + 1}/${top.length} · ${post.title.slice(0, 24)}`);
+      for (var n = 0; n < top.length; n++) {
+        throwIfAborted();
+        var post = top[n];
+        setStatus(
+          "본문 " +
+            (n + 1) +
+            "/" +
+            top.length +
+            " · " +
+            post.title.slice(0, 22)
+        );
         try {
-          const html = await fetchText(post.href);
-          for (const img of extractImages(html, post.href)) {
-            if (seenImg.has(img)) continue;
-            seenImg.add(img);
-            images.push(img);
+          var postHtml = await fetchText(post.href);
+          var imgs = extractImages(postHtml, post.href);
+          for (var k = 0; k < imgs.length; k++) {
+            if (seenImg[imgs[k]]) continue;
+            seenImg[imgs[k]] = 1;
+            images.push(imgs[k]);
           }
-          images.sort((a, b) => Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a)));
+          images.sort(function (a, b) {
+            return Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a));
+          });
           renderGallery(images);
         } catch (e) {
-          if (e.name === "AbortError") throw e;
+          if (e.name === "AbortError" || e.message === "STOPPED") throw e;
         }
       }
 
       setRunning(false);
       if (!images.length) {
-        setStatus("글은 있는데 이미지가 안 잡혔어. 다시 눌러봐.", "error");
+        setStatus(
+          failCount
+            ? "사이트 접속이 막혔어. 와이파이/데이터 바꿔서 다시 눌러봐."
+            : "사진을 못 모았어. 다시 검색 눌러봐.",
+          "error"
+        );
         return;
       }
-      setStatus(`${p.ko} 상위 · 사진 ${images.length}장`, "ok");
+      setStatus(p.ko + " · 사진 " + images.length + "장", "ok");
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
         renderGallery(images);
-        setStatus(`중지 · ${images.length}장`, "ok");
+        setStatus("중지 · " + images.length + "장", "ok");
         return;
       }
       setStatus("오류: " + (e.message || e), "error");
     }
   }
 
-  searchBtn.onclick = () => {
-    if (!running) runSearch();
-  };
+  searchBtn.addEventListener("click", function () {
+    if (running) return;
+    setStatus("버튼 눌림 · 준비 중...", "");
+    runSearch().catch(function (e) {
+      setRunning(false);
+      setStatus("오류: " + (e && e.message ? e.message : e), "error");
+    });
+  });
+
+  setStatus("기간 고르고 검색 눌러봐.", "");
 })();

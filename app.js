@@ -46,7 +46,9 @@
   var now = new Date();
   var THIS_Y = now.getFullYear();
   var THIS_M = now.getMonth() + 1;
-  var MIN_Y = 2020;
+  // 실질 수집 가능 구간: 2026년 1월부터
+  var MIN_Y = 2026;
+  var MIN_M = 1;
 
   function fillSelect(el, from, to, selected, suffix) {
     el.innerHTML = "";
@@ -59,10 +61,18 @@
     }
   }
 
-  fillSelect(fromYearEl, MIN_Y, THIS_Y, THIS_Y, "년");
-  fillSelect(toYearEl, MIN_Y, THIS_Y, THIS_Y, "년");
+  var yearFrom = Math.min(MIN_Y, THIS_Y);
+  var yearTo = Math.max(MIN_Y, THIS_Y);
+  fillSelect(fromYearEl, yearFrom, yearTo, THIS_Y, "년");
+  fillSelect(toYearEl, yearFrom, yearTo, THIS_Y, "년");
   fillSelect(fromMonthEl, 1, 12, Math.max(1, THIS_M - 2), "월");
   fillSelect(toMonthEl, 1, 12, THIS_M, "월");
+
+  function clampYm(y, m) {
+    if (y < MIN_Y || (y === MIN_Y && m < MIN_M)) return { y: MIN_Y, m: MIN_M };
+    if (y > THIS_Y || (y === THIS_Y && m > THIS_M)) return { y: THIS_Y, m: THIS_M };
+    return { y: y, m: m };
+  }
 
   function ymValue(yEl, mEl) {
     return parseInt(yEl.value, 10) * 100 + parseInt(mEl.value, 10);
@@ -89,7 +99,7 @@
       String(toMonthEl.value).padStart(2, "0") +
       " · " +
       months +
-      "개월 · 조회수순 · 화면은 50장씩";
+      "개월 · 2026.01부터 · 화면은 50장씩";
   }
 
   [fromYearEl, fromMonthEl, toYearEl, toMonthEl].forEach(function (el) {
@@ -97,10 +107,17 @@
   });
 
   function setRange(fy, fm, ty, tm) {
-    fromYearEl.value = String(fy);
-    fromMonthEl.value = String(fm);
-    toYearEl.value = String(ty);
-    toMonthEl.value = String(tm);
+    var a = clampYm(fy, fm);
+    var b = clampYm(ty, tm);
+    if (a.y * 100 + a.m > b.y * 100 + b.m) {
+      var tmp = a;
+      a = b;
+      b = tmp;
+    }
+    fromYearEl.value = String(a.y);
+    fromMonthEl.value = String(a.m);
+    toYearEl.value = String(b.y);
+    toMonthEl.value = String(b.m);
     syncRangeHint();
   }
 
@@ -126,9 +143,9 @@
       },
     },
     {
-      ko: "작년",
+      ko: "26년 1월~",
       apply: function () {
-        setRange(THIS_Y - 1, 1, THIS_Y - 1, 12);
+        setRange(MIN_Y, MIN_M, THIS_Y, THIS_M);
       },
     },
   ].forEach(function (p) {
@@ -188,6 +205,12 @@
     var fm = parseInt(fromMonthEl.value, 10);
     var ty = parseInt(toYearEl.value, 10);
     var tm = parseInt(toMonthEl.value, 10);
+    var ca = clampYm(fy, fm);
+    var cb = clampYm(ty, tm);
+    fy = ca.y;
+    fm = ca.m;
+    ty = cb.y;
+    tm = cb.m;
     if (fy * 100 + fm > ty * 100 + tm) {
       var swapY = fy;
       var swapM = fm;
@@ -195,6 +218,8 @@
       fm = tm;
       ty = swapY;
       tm = swapM;
+      setRange(fy, fm, ty, tm);
+    } else {
       setRange(fy, fm, ty, tm);
     }
     var fromMs = new Date(fy, fm - 1, 1, 0, 0, 0).getTime();

@@ -12,7 +12,7 @@
       <p class="badge">FOR FRIENDS · JOKE TOOL</p>
       <h1>야짤검색기</h1>
       <p class="by">제작자 <strong>김범수</strong></p>
-      <p class="desc">실사 은꼴사 · 야짤 · GIF만 (애니 걸러냄)</p>
+      <p class="desc">제목에 야짤·은꼴 들어간 글만 · 조회수 상위 사진</p>
     </header>
 
     <section class="card">
@@ -21,7 +21,7 @@
     </section>
 
     <section class="card">
-      <h2>2. 카테고리</h2>
+      <h2>2. 카테고리 (제목 키워드)</h2>
       <div id="cats" class="chips"></div>
     </section>
 
@@ -30,22 +30,23 @@
         <h2>3. 커뮤니티</h2>
         <div class="mini-actions">
           <button type="button" id="srcAll" class="mini">전체</button>
-          <button type="button" id="srcTop" class="mini">상위10</button>
+          <button type="button" id="srcTop" class="mini">상위</button>
           <button type="button" id="srcNone" class="mini">해제</button>
         </div>
       </div>
       <div id="sources" class="chips sources"></div>
     </section>
 
-    <div class="actions">
+    <div class="actions row">
       <button id="searchBtn" class="primary" type="button">인기 사진 불러오기</button>
+      <button id="stopBtn" class="stop" type="button" disabled>검색 중지</button>
     </div>
 
     <p id="status" class="status" aria-live="polite"></p>
     <section id="gallery" class="gallery" aria-label="사진"></section>
 
     <footer>
-      <p>제작자 김범수 · 사진만 표시</p>
+      <p>제작자 김범수 · 제목 매칭 글의 이미지만 표시</p>
     </footer>
   </div>
 

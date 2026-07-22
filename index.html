@@ -12,34 +12,47 @@
       <p class="badge">FOR FRIENDS · JOKE TOOL</p>
       <h1>야짤검색기</h1>
       <p class="by">제작자 <strong>김범수</strong></p>
-      <p class="desc">한국 커뮤니티에서 JPG만 모아서 한눈에 보여줌 ㅋㅋ</p>
+      <p class="desc">한국 커뮤니티에서 야사 · 야짤 · 은꼴사 한눈에 ㅋㅋ</p>
     </header>
 
     <section class="card">
-      <h2>1. 카테고리</h2>
+      <h2>1. 종류</h2>
+      <div id="kinds" class="chips kinds"></div>
+    </section>
+
+    <section class="card">
+      <h2>2. 카테고리</h2>
       <div id="cats" class="chips"></div>
     </section>
 
     <section class="card">
-      <h2>2. 커뮤니티</h2>
+      <div class="card-head">
+        <h2>3. 커뮤니티</h2>
+        <div class="mini-actions">
+          <button type="button" id="srcAll" class="mini">전체</button>
+          <button type="button" id="srcTop" class="mini">상위10</button>
+          <button type="button" id="srcNone" class="mini">해제</button>
+        </div>
+      </div>
       <div id="sources" class="chips sources"></div>
     </section>
 
     <section class="card">
-      <h2>3. 추가 키워드 (선택)</h2>
+      <h2>4. 추가 키워드 (선택)</h2>
       <input id="title" type="text" placeholder="예: 옆집 아줌마, 오피스룩..." />
     </section>
 
     <div class="actions">
-      <button id="searchBtn" class="primary" type="button">JPG 긁어오기</button>
+      <button id="searchBtn" class="primary" type="button">검색해서 긁어오기</button>
     </div>
 
     <p id="status" class="status" aria-live="polite"></p>
 
-    <section id="gallery" class="gallery" aria-label="검색 결과"></section>
+    <section id="posts" class="posts" aria-label="야사 / 글 결과"></section>
+    <section id="gallery" class="gallery" aria-label="야짤 / 은꼴사 이미지"></section>
 
     <footer>
-      <p>제작자 김범수 · 한국 커뮤니티 검색 결과 JPG 모아보기</p>
+      <p>제작자 김범수 · 디시·펨코·더쿠·루리웹·아카라이브 등 한국 커뮤니티</p>
     </footer>
   </div>
   <script src="app.js"></script>

@@ -65,6 +65,26 @@ h1 {
   font-size: 0.95rem;
   color: #ffd6e8;
 }
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.card-head h2 { margin: 0; }
+.mini-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+button.mini {
+  font: inherit;
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button.mini:hover { border-color: var(--accent); color: var(--text); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
@@ -84,6 +104,30 @@ h1 {
   font-weight: 700;
 }
 .sources .chip.on { background: #d9480f; }
+.kinds .chip.on { background: #e67700; }
+
+.posts {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+.posts:empty { display: none; }
+.posts .post {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #120e18;
+  color: #ffd6e8;
+  text-decoration: none;
+}
+.posts .post:hover { border-color: var(--accent); }
+.posts .post .meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
 
 input#title {
   width: 100%;

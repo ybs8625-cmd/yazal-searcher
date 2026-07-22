@@ -79,21 +79,25 @@
     };
   }
 
-  /** 검색/대기 상태 상세 표기 */
+  /** 검색/대기 상태 상세 표기 (켜진 필터 기준) */
   function refreshStatus(phase, kind) {
     var s = countStats();
     var head = phase || (running ? "검색 중" : "대기");
-    var msg =
-      head +
-      " · 움짤 " +
-      s.gif +
-      " · 사진 " +
-      s.photo +
-      " · 화면 " +
-      s.shown +
-      " · 남은 " +
-      s.left;
-    setStatus(msg, kind || (running ? "" : "ok"));
+    var parts = [head];
+
+    if (showGif && showPhoto) {
+      parts.push("전체 " + s.total);
+      parts.push("움짤 " + s.gif);
+      parts.push("사진 " + s.photo);
+    } else if (showGif) {
+      parts.push("움짤 " + s.gif);
+    } else if (showPhoto) {
+      parts.push("사진 " + s.photo);
+    }
+
+    parts.push("화면 " + s.shown);
+    parts.push("남은 " + s.left);
+    setStatus(parts.join(" · "), kind || (running ? "" : "ok"));
   }
 
   function filteredItems() {

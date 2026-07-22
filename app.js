@@ -18,9 +18,12 @@
   var allItems = [];
   var seenImg = {};
   var visibleCount = 0;
+  // 현재 구간에서 자동으로 채워 보여줄 목표 장수 (더보기 누르면 +PAGE_SIZE)
+  var displayCap = PAGE_SIZE;
   var session = null; // 추가검색용 세션
   var showGif = true;
   var showPhoto = true;
+  var footerMode = ""; // searching | more | moreSearch | ""
 
   var periodsEl = document.getElementById("periods");
   var rangeBox = document.getElementById("rangeBox");
@@ -31,9 +34,7 @@
   var toMonthEl = document.getElementById("toMonth");
   var statusEl = document.getElementById("status");
   var galleryEl = document.getElementById("gallery");
-  var moreBtn = document.getElementById("moreBtn");
-  var moreSearchBtn = document.getElementById("moreSearchBtn");
-  var searchProgress = document.getElementById("searchProgress");
+  var footerAction = document.getElementById("footerAction");
   var searchBtn = document.getElementById("searchBtn");
   var stopBtn = document.getElementById("stopBtn");
   var lightbox = document.getElementById("lightbox");
@@ -47,9 +48,7 @@
     !statusEl ||
     !galleryEl ||
     !periodsEl ||
-    !moreBtn ||
-    !moreSearchBtn ||
-    !searchProgress ||
+    !footerAction ||
     !filterGifBtn ||
     !filterPhotoBtn
   ) {
@@ -127,7 +126,8 @@
     showGif = !showGif;
     if (!showGif && !showPhoto) showPhoto = true;
     syncTypeFilterUi();
-    visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
+    displayCap = PAGE_SIZE;
+    visibleCount = Math.min(displayCap, filteredItems().length);
     renderVisible(true);
     refreshStatus(running ? null : "필터 변경");
   });
@@ -136,7 +136,8 @@
     showPhoto = !showPhoto;
     if (!showGif && !showPhoto) showGif = true;
     syncTypeFilterUi();
-    visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
+    displayCap = PAGE_SIZE;
+    visibleCount = Math.min(displayCap, filteredItems().length);
     renderVisible(true);
     refreshStatus(running ? null : "필터 변경");
   });
@@ -321,7 +322,6 @@
     running = on;
     searchBtn.disabled = on;
     stopBtn.disabled = !on;
-    moreSearchBtn.disabled = on;
     searchBtn.textContent = on ? "검색 중..." : "검색";
     updateFooterBtns();
   }
@@ -638,66 +638,67 @@
   var JJ_ALLOW = /^https?:\/\/img\d*\.jjtv\.kr\//i;
   var JJ_ABS = /https?:\/\/img\d*\.jjtv\.kr\/[^\s"'<>)\\]+/gi;
 
-  function batchCap() {
-    if (visibleCount <= 0) return PAGE_SIZE;
-    return Math.ceil(visibleCount / PAGE_SIZE) * PAGE_SIZE;
-  }
-
-  /** 화면 하단 고정: 표출 장수 / 이번 구간 목표(30) */
-  function updateSearchProgress() {
-    if (!running) {
-      searchProgress.hidden = true;
+  function setFooterMode(mode, text) {
+    footerMode = mode || "";
+    footerAction.classList.remove("is-searching", "is-more", "is-more-search");
+    if (!mode) {
+      footerAction.hidden = true;
+      footerAction.disabled = true;
       return;
     }
-    var list = filteredItems();
-    var shown = Math.min(visibleCount, list.length);
-    var cap = batchCap();
-    searchProgress.hidden = false;
-    searchProgress.textContent = "검색중(" + shown + "/" + cap + ")";
+    footerAction.hidden = false;
+    footerAction.textContent = text;
+    if (mode === "searching") {
+      footerAction.classList.add("is-searching");
+      footerAction.disabled = true;
+    } else if (mode === "more") {
+      footerAction.classList.add("is-more");
+      footerAction.disabled = false;
+    } else if (mode === "moreSearch") {
+      footerAction.classList.add("is-more-search");
+      footerAction.disabled = false;
+    }
   }
 
+  /** 단일 하단 버튼: 검색중 ↔ 더보기 ↔ 추가검색 (동시에 하나만) */
   function updateFooterBtns() {
     var list = filteredItems();
     var shown = Math.min(visibleCount, list.length);
-    var cap = batchCap();
-    var left = list.length - visibleCount;
+    var left = Math.max(0, list.length - shown);
+    var cap = displayCap;
 
-    updateSearchProgress();
-
-    // 현재 구간이 찼고 더 볼 게 있으면 더보기
-    if (left > 0 && shown >= cap) {
-      moreBtn.hidden = false;
-      moreBtn.disabled = false;
-      moreBtn.textContent =
-        "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
-      moreSearchBtn.hidden = true;
-      return;
-    }
-    // 검색 중이고 아직 구간 채우는 중이면 더보기는 숨김 (검색중 표시만)
+    // 검색 중 + 아직 이번 구간(cap) 미달 → 검색중
     if (running && shown < cap) {
-      moreBtn.hidden = true;
-      moreSearchBtn.hidden = true;
+      setFooterMode("searching", "검색중(" + shown + "/" + cap + ")");
       return;
     }
+    // 화면에 안 올린 확보분이 있으면 더보기 (검색 중이어도 같은 버튼으로 전환)
     if (left > 0) {
-      moreBtn.hidden = false;
-      moreBtn.disabled = false;
-      moreBtn.textContent =
-        "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
-      moreSearchBtn.hidden = true;
+      setFooterMode(
+        "more",
+        "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)"
+      );
       return;
     }
-    moreBtn.hidden = true;
     if (running) {
-      moreSearchBtn.hidden = true;
+      setFooterMode("searching", "검색중(" + shown + "/" + cap + ")");
       return;
     }
     if (session && !session.done && allItems.length > 0) {
-      moreSearchBtn.hidden = false;
-      moreSearchBtn.textContent = "추가검색 · 다음 조회수 자료";
-    } else {
-      moreSearchBtn.hidden = true;
+      setFooterMode("moreSearch", "추가검색 · 다음 조회수 자료");
+      return;
     }
+    setFooterMode("", "");
+  }
+
+  /** 확보분이 있으면 displayCap까지 화면 장수를 채움 */
+  function fillVisibleToCap() {
+    var list = filteredItems();
+    if (!list.length) return false;
+    var next = Math.min(displayCap, list.length);
+    if (next <= visibleCount) return false;
+    visibleCount = next;
+    return true;
   }
 
   function renderVisible(force) {
@@ -741,10 +742,7 @@
       paintTimer = null;
       var f = paintForce;
       paintForce = false;
-      var list = filteredItems();
-      if (visibleCount < PAGE_SIZE && list.length) {
-        visibleCount = Math.min(PAGE_SIZE, list.length);
-      }
+      fillVisibleToCap();
       renderVisible(f);
     }, 120);
   }
@@ -771,20 +769,9 @@
     }
     if (!changed) return 0;
 
-    var list = filteredItems();
-    // 이미 한 화면(30장) 이상 보고 있으면 자동으로 화면을 늘리지 않음 → 더보기로만 이어보기
-    if (visibleCount === 0 && list.length) {
-      visibleCount = Math.min(PAGE_SIZE, list.length);
-      updateSearchProgress();
-      schedulePaint(true);
-    } else if (
-      visibleCount > 0 &&
-      visibleCount < PAGE_SIZE &&
-      list.length > visibleCount
-    ) {
-      visibleCount = Math.min(PAGE_SIZE, list.length);
-      updateSearchProgress();
-      schedulePaint(false);
+    // displayCap 안이면 새 사진을 바로 이어서 표출 (더보기 후에도 동일)
+    if (fillVisibleToCap()) {
+      schedulePaint(galleryEl.querySelectorAll(".shot").length === 0);
     } else {
       updateFooterBtns();
     }
@@ -1189,30 +1176,38 @@
     abortCtrl.abort();
     setRunning(false);
     refreshSessionDone();
+    fillVisibleToCap();
     renderVisible(true);
     refreshStatus("중지", "ok");
   };
 
-  moreBtn.onclick = function () {
+  function doMore() {
     var list = filteredItems();
     if (!list.length) return;
     var before = visibleCount;
-    visibleCount = Math.min(list.length, visibleCount + PAGE_SIZE);
-    if (visibleCount === before) {
+    displayCap += PAGE_SIZE;
+    visibleCount = Math.min(list.length, displayCap);
+    if (visibleCount === before && list.length <= before) {
       updateFooterBtns();
       return;
     }
     renderVisible(false);
-    refreshStatus("더보기", "ok");
-  };
+    refreshStatus(running ? null : "더보기", running ? "" : "ok");
+  }
 
-  moreSearchBtn.onclick = function () {
-    if (running || !session || session.done) return;
-    runMoreSearch().catch(function (e) {
-      setRunning(false);
-      setStatus("오류: " + (e && e.message ? e.message : e), "error");
-      updateFooterBtns();
-    });
+  footerAction.onclick = function () {
+    if (footerMode === "more") {
+      doMore();
+      return;
+    }
+    if (footerMode === "moreSearch") {
+      if (running || !session || session.done) return;
+      runMoreSearch().catch(function (e) {
+        setRunning(false);
+        setStatus("오류: " + (e && e.message ? e.message : e), "error");
+        updateFooterBtns();
+      });
+    }
   };
 
   async function runSearch() {
@@ -1221,6 +1216,7 @@
     allItems = [];
     seenImg = {};
     visibleCount = 0;
+    displayCap = PAGE_SIZE;
     session = {
       plan: plan,
       bob: newBucket(),
@@ -1229,10 +1225,7 @@
       done: false,
     };
     galleryEl.innerHTML = "";
-    moreBtn.hidden = true;
-    moreSearchBtn.hidden = true;
-    searchProgress.hidden = false;
-    searchProgress.textContent = "검색중(0/" + PAGE_SIZE + ")";
+    setFooterMode("searching", "검색중(0/" + PAGE_SIZE + ")");
     abortCtrl = new AbortController();
     refreshStatus(plan.label + " 검색 시작");
 
@@ -1248,18 +1241,14 @@
         updateFooterBtns();
         return;
       }
-      if (visibleCount === 0) {
-        visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
-      }
+      fillVisibleToCap();
       renderVisible(true);
       refreshStatus(plan.label + " 완료", "ok");
     } catch (e) {
       setRunning(false);
       refreshSessionDone();
       if (e.name === "AbortError" || e.message === "STOPPED") {
-        if (visibleCount === 0 && allItems.length) {
-          visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
-        }
+        fillVisibleToCap();
         renderVisible(true);
         refreshStatus("중지", "ok");
         return;

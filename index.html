@@ -12,7 +12,7 @@
   <div class="wrap">
     <header class="hero">
       <h1>야짤 간편 검색 머신</h1>
-      <p class="by">&lt;개발요청자 : <strong>딸박사</strong>&gt; &nbsp;&nbsp; Ver-<span id="ver">7.4</span></p>
+      <p class="by">&lt;개발요청자 : <strong>딸박사</strong>&gt; &nbsp;&nbsp; Ver-<span id="ver">7.5</span></p>
     </header>
 
     <section class="card">
@@ -52,13 +52,10 @@
 
     <p id="status" class="status" aria-live="polite"></p>
     <section id="gallery" class="gallery" aria-label="사진"></section>
-    <div class="more-wrap">
-      <button id="moreBtn" class="more" type="button" hidden>더보기</button>
-      <button id="moreSearchBtn" class="more more-search" type="button" hidden>추가검색</button>
-    </div>
   </div>
 
-  <div id="searchProgress" class="search-progress" hidden aria-live="polite">검색중(0/30)</div>
+  <!-- 검색중 / 더보기 / 추가검색 단일 하단 버튼 -->
+  <button id="footerAction" class="footer-action" type="button" hidden aria-live="polite">검색중(0/30)</button>
 
   <div id="lightbox" class="lightbox" hidden>
     <button id="lightboxClose" class="lightbox-close" type="button" aria-label="닫기">×</button>

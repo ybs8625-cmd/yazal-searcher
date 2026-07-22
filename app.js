@@ -1,55 +1,69 @@
 (() => {
-  // 은꼴사·야짤 유명 3곳 고정
+  /**
+   * 핵심: 광고 URL은 절대 허용 안 함.
+   * 각 커뮤니티 "첨부/본문 CDN" 화이트리스트만 통과.
+   */
   const SOURCES = [
-    {
-      name: "아카 야짤",
-      site: "arca.live",
-      // 보드 자체가 야짤이라 제목에 '야짤' 없어도 OK
-      boardMode: true,
-      urls: (range) => [
-        `https://arca.live/b/yazzal?mode=best&sort=rating&range=${range}`,
-        `https://arca.live/b/shade?mode=best&sort=rating&range=${range}`,
-      ],
-    },
     {
       name: "일베",
       site: "ilbe.com",
-      boardMode: false,
-      urls: () => [
-        "https://www.ilbe.com/search?keyword=%EC%95%BC%EC%A7%A4",
-        "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4%EC%82%AC",
-      ],
+      allowHost: /^(?:[\w-]+\.)?ncache\.ilbe\.com$/i,
+      // 목록에 붙는 files/attach 가 본문 사진
+      urls: function () {
+        return [
+          "https://www.ilbe.com/search?keyword=%EC%95%BC%EC%A7%A4",
+          "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4%EC%82%AC",
+          "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4",
+          "https://www.ilbe.com/search?keyword=%EC%95%BC%EC%A7%A4+gif",
+          "https://www.ilbe.com/list/celeb",
+          "https://www.ilbe.com/list/celeb?sort=hit",
+        ];
+      },
+    },
+    {
+      name: "아카 야짤",
+      site: "arca.live",
+      allowHost: /^(?:ac\.)?namu\.la$/i,
+      urls: function (range) {
+        return [
+          "https://arca.live/b/yazzal?mode=best&sort=rating&range=" + range,
+          "https://arca.live/b/shade?mode=best&sort=rating&range=" + range,
+          "https://arca.live/b/yazzal?mode=best",
+          "https://arca.live/b/shade?mode=best",
+        ];
+      },
+      // 목록에 CDN이 잘 안 보여서 글로 들어감
+      digPosts: true,
+      postPath: /arca\.live\/b\/(?:yazzal|shade)\/(\d+)/i,
     },
     {
       name: "해연갤",
       site: "hygall.com",
-      boardMode: false,
-      urls: () => [
-        "https://hygall.com/?sort=hit",
-        "https://hygall.com/search?keyword=%EC%9D%80%EA%BC%B4",
-      ],
+      // 해연갤 본문 첨부는 보통 files/ 아래
+      allowHost: /^(?:[\w-]+\.)?hygall\.com$/i,
+      allowPath: /\/files\/|\/attach|\/xe\/|document_srl/i,
+      urls: function () {
+        return [
+          "https://hygall.com/?sort=hit",
+          "https://hygall.com/ex_all?sort=hit",
+          "https://hygall.com/search?keyword=%EC%9D%80%EA%BC%B4",
+          "https://hygall.com/search?keyword=%EC%95%BC%EC%A7%A4",
+        ];
+      },
+      digPosts: true,
+      postPath: /document_srl=(\d+)|hygall\.com\/(?:ex_all|ex_\w+)\/(\d+)/i,
     },
   ];
 
   const PERIODS = [
-    { id: "day", ko: "일간", arca: "24h", take: 15 },
-    { id: "week", ko: "주간", arca: "7d", take: 20 },
-    { id: "month", ko: "월간", arca: "30d", take: 25 },
+    { id: "day", ko: "일간", arca: "24h", takePosts: 12 },
+    { id: "week", ko: "주간", arca: "7d", takePosts: 16 },
+    { id: "month", ko: "월간", arca: "30d", takePosts: 20 },
   ];
 
-  const TITLE_OK = /야짤|은꼴사|은꼴|움짤|gif/i;
-  const TITLE_BAN =
-    /애니|만화|일러스트|픽시브|pixiv|hentai|팬아트|동인|니케|블루아카|AI\s*그림|와후|waifu|단보루|젤보루/i;
-  const URL_BAN =
-    /pixiv|pximg|danbooru|donmai|gelbooru|sankaku|rule34|booru|zerochan|wixmp|waifu|hentai|anime|manga|nhentai|civitai|novelai|aiart/i;
-
-  // 광고·트래킹·사이드바 이미지
-  const AD_URL =
-    /doubleclick|googlesyndication|googleadservices|googletag|adsense|pagead|adservice|amazon-adsystem|taboola|outbrain|adsrvr|adnxs|adcolony|advert|adsystem|adserver|adimg|ads\.|\/ads\/|\/ad\/|banner|sponsor|promo|tracking|pixel|analytics|scorecard|facebook\.com\/tr|criteo|moatads|imrworldwide|stickyad|popunder|popads|adfit|dable|realclick|adman|ad-cdn|adcdn|kaspersky|creativecdn|serving-sys|ad\.|adsales|adtech|yieldmo|pubmatic|openx|rubicon|casalemedia|ads-twitter|ads-api/i;
-
-  // 본문 첨부/업로드로 보이는 경로 (가점)
-  const CONTENT_PATH =
-    /\/files?\/|\/attach|\/upload|\/uploads?\/|\/image\/|\/images\/|\/img\/|\/media\/|\/data\/|ncache\.|dcimg|ac\.namu\.la|namu\.la|hygall\.|ilbe\.com\/files|postfiles|blogfiles|editor|viewer|original|full/i;
+  // UI/광고/아이콘 경로
+  const PATH_BAN =
+    /\/box\/|\/common\/|\/layout\/|\/modules\/|\/addons\/|sns\.jpg|icon|logo|button|badge|emoticon|favicon|captcha|banner|sponsor|ads?\.|\/ad\/|pelican|ad4989|naverads|mediacategory|wcs\.naver/i;
 
   var selectedPeriod = "day";
   var abortCtrl = null;
@@ -149,26 +163,21 @@
         "X-Timeout": "15",
       },
     };
-
-    // 1) jina
     try {
       var r = await withTimeout(fetch("https://r.jina.ai/" + url, opts), 18000);
       throwIfAborted();
       if (r.ok) {
         var text = await r.text();
-        if (text && text.length > 200) return text;
+        if (text && text.length > 100) return text;
       }
     } catch (e) {
       if (e.name === "AbortError" || e.message === "STOPPED") throw e;
     }
-
-    // 2) allorigins 백업
     try {
       var r2 = await withTimeout(
-        fetch(
-          "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-          { signal: abortCtrl.signal }
-        ),
+        fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url), {
+          signal: abortCtrl.signal,
+        }),
         18000
       );
       throwIfAborted();
@@ -176,7 +185,6 @@
     } catch (e) {
       if (e.name === "AbortError" || e.message === "STOPPED") throw e;
     }
-
     throw new Error("불러오기 실패");
   }
 
@@ -193,168 +201,96 @@
       }
     }
     if (!/^https?:\/\//i.test(s)) return null;
-    return s;
+    return s.split("#")[0];
   }
 
-  function parseViews(chunk) {
-    var m =
-      chunk.match(/조회\s*수?\s*[:：]?\s*([\d,]+)/i) ||
-      chunk.match(/views?\s*[:：]?\s*([\d,]+)/i) ||
-      chunk.match(/\b([\d,]{3,7})\b/);
-    return m ? parseInt(m[1].replace(/,/g, ""), 10) || 0 : 0;
+  function hostOf(u) {
+    try {
+      return new URL(u).hostname;
+    } catch (e) {
+      return "";
+    }
   }
 
-  function titleOk(title, boardMode) {
-    if (!title || title.length < 2) return false;
-    if (TITLE_BAN.test(title)) return false;
-    if (boardMode) return true; // 야짤 보드면 제목 자유
-    return TITLE_OK.test(title);
+  function pathOf(u) {
+    try {
+      return new URL(u).pathname + new URL(u).search;
+    } catch (e) {
+      return u;
+    }
   }
 
-  function extractPosts(html, site, listUrl, boardMode) {
-    var posts = [];
+  /** 화이트리스트 CDN만 통과 — 광고 원천 차단 */
+  function isAllowedImage(url, source) {
+    if (!url) return false;
+    if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url.split("?")[0])) return false;
+    if (PATH_BAN.test(url)) return false;
+    var host = hostOf(url);
+    if (!source.allowHost.test(host)) return false;
+    if (source.allowPath && !source.allowPath.test(pathOf(url))) {
+      // hygall: files/attach 만. 루트 sns.jpg 같은 건 거름
+      return false;
+    }
+    // 일베는 attach 경로만
+    if (source.site === "ilbe.com" && !/\/files\d*\/attach\//i.test(url)) {
+      return false;
+    }
+    return true;
+  }
+
+  function extractAllowedImages(html, base, source) {
+    var out = [];
     var seen = {};
-    var re =
-      /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>|\[([^\]]{2,160})\]\((https?:\/\/[^)]+)\)/gi;
-    var m;
-    while ((m = re.exec(html))) {
-      var href = m[1] || m[4];
-      var title = (m[2] || m[3] || "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      href = normalizeUrl(href, listUrl);
-      if (!href || !title) continue;
-      if (href.indexOf(site) === -1) continue;
-      if (/search|login|join|notice|공지|\.css|\.js\b|javascript:/i.test(href + title))
-        continue;
-      if (!/\/\d{5,}|(view|article|post|bbs|board|b\/[^\/]+\/\d+)/i.test(href)) continue;
-      if (!titleOk(title, boardMode)) continue;
-      if (seen[href]) continue;
-      var around = html.slice(
-        Math.max(0, m.index - 60),
-        Math.min(html.length, m.index + 260)
-      );
-      seen[href] = 1;
-      posts.push({ title: title, href: href, views: parseViews(around) });
-    }
-    return posts;
-  }
-
-  /** 광고/레이아웃 덩어리 제거 후 본문만 남김 */
-  function extractArticleHtml(html) {
-    var s = String(html || "");
-
-    // 스크립트·스타일·noscript 제거
-    s = s.replace(/<script[\s\S]*?<\/script>/gi, " ");
-    s = s.replace(/<style[\s\S]*?<\/style>/gi, " ");
-    s = s.replace(/<noscript[\s\S]*?<\/noscript>/gi, " ");
-
-    // 광고/사이드/헤더/푸터 블록 제거
-    s = s.replace(
-      /<(aside|header|footer|nav)[\s\S]*?<\/\1>/gi,
-      " "
-    );
-    s = s.replace(
-      /<[^>]+(?:class|id)=["'][^"']*(?:ad-|ads|advert|sponsor|banner|sidebar|side-bar|recommend|related|popup|modal|cookie|gnb|lnb|footer|header|navi)[^"']*["'][^>]*>[\s\S]*?<\/[^>]+>/gi,
-      " "
-    );
-
-    // 본문 후보 영역만 추출
-    var chunks = [];
-    var patterns = [
-      /<article[\s\S]*?<\/article>/gi,
-      /<(?:div|section)[^>]*(?:class|id)=["'][^"']*(?:article|content|write_div|view-content|post-content|board-content|reading|fr-view|viewer|entry-content|article_body|article-body|post_content|gall_view|writing_view|board-view)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|section)>/gi,
-    ];
-    for (var p = 0; p < patterns.length; p++) {
-      var m;
-      var re = patterns[p];
-      while ((m = re.exec(s))) {
-        if (m[0] && m[0].length > 80) chunks.push(m[0]);
-      }
-    }
-
-    if (chunks.length) {
-      // 가장 긴 본문 덩어리 = 핵심 내용일 확률 높음
-      chunks.sort(function (a, b) {
-        return b.length - a.length;
-      });
-      return chunks.slice(0, 2).join("\n");
-    }
-    return s;
-  }
-
-  function isJunkOrAdUrl(u) {
-    if (!u) return true;
-    if (AD_URL.test(u) || URL_BAN.test(u)) return true;
-    if (/sprite|icon|logo|emoji|avatar|profile|favicon|emoticon|stamp|button|badge|thumb_user|nickname|captcha/i.test(u))
-      return true;
-    // 너무 작은 이미지/썸네일 힌트
-    if (/[?&](w|width|h|height)=(1|2|3|4|5|10|16|20|24|32|40|48|50|64)(\D|$)/i.test(u))
-      return true;
-    if (/(\/|=)(16x16|32x32|48x48|64x64|1x1|thumb_s|tiny|mini)(\/|$|\.)/i.test(u))
-      return true;
-    if (/data:image/i.test(u)) return true;
-    return false;
-  }
-
-  function scoreContentImage(u) {
-    var score = 0;
-    if (CONTENT_PATH.test(u)) score += 40;
-    if (/\.(jpe?g|gif)(\?|$)/i.test(u)) score += 15;
-    if (/\.png(\?|$)/i.test(u)) score += 5;
-    if (/original|full|large|big|attach|upload/i.test(u)) score += 20;
-    if (/thumb|small|preview|resize|thumbnail|s\.jpg|_s\./i.test(u)) score -= 25;
-    if (/ncache\.ilbe|dcimg|ac\.namu\.la|namu\.la|hygall/i.test(u)) score += 25;
-    // 쿼리에 큰 사이즈
-    if (/[?&](w|width)=(8|9|[1-9]\d{2,})/i.test(u)) score += 10;
-    return score;
-  }
-
-  function extractImages(html, base, opts) {
-    opts = opts || {};
-    var onlyContent = opts.onlyContent !== false; // 기본: 본문만
-    var body = onlyContent ? extractArticleHtml(html) : html;
-
-    var scored = [];
-    var seen = {};
-
     function push(raw) {
       var u = normalizeUrl(raw, base);
-      if (!u) return;
-      if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u.split("?")[0])) return;
-      if (isJunkOrAdUrl(u)) return;
-      u = u.split("#")[0];
-      if (seen[u]) return;
+      if (!u || seen[u]) return;
+      if (!isAllowedImage(u, source)) return;
       seen[u] = 1;
-      var sc = scoreContentImage(u);
-      // 본문 첨부 느낌이 거의 없으면 버림
-      if (sc < 15) return;
-      scored.push({ u: u, sc: sc });
+      out.push(u);
     }
 
     var x;
-    // lazy/original 우선 속성
-    var re1 =
+    var reAttr =
       /(?:data-original|data-url|data-src|data-lazy|data-orig-src|src)\s*=\s*["']([^"']+)["']/gi;
-    while ((x = re1.exec(body))) push(x[1]);
-    var re2 = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi;
-    while ((x = re2.exec(body))) push(x[1]);
-    var re3 =
+    while ((x = reAttr.exec(html))) push(x[1]);
+    var reMd = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi;
+    while ((x = reMd.exec(html))) push(x[1]);
+    var rePlain =
       /https?:\/\/[^\s"'<>)\\]+?\.(?:jpe?g|png|webp|gif)(?:\?[^\s"'<>)\\]*)?/gi;
-    while ((x = re3.exec(body))) push(x[0].replace(/[.,;)]+$/, ""));
+    while ((x = rePlain.exec(html))) push(x[0].replace(/[.,;)]+$/, ""));
 
-    scored.sort(function (a, b) {
-      return b.sc - a.sc;
+    // gif 우선
+    out.sort(function (a, b) {
+      return Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a));
     });
-
-    // 글당 너무 많이 안 가져감 (광고 잔여 방지)
-    var max = opts.max || 8;
-    var out = [];
-    for (var i = 0; i < scored.length && out.length < max; i++) {
-      out.push(scored[i].u);
-    }
     return out;
+  }
+
+  function extractPostLinks(html, source, listUrl) {
+    if (!source.digPosts || !source.postPath) return [];
+    var links = [];
+    var seen = {};
+    var re = /href=["']([^"']+)["']/gi;
+    var m;
+    while ((m = re.exec(html))) {
+      var href = normalizeUrl(m[1], listUrl);
+      if (!href || seen[href]) continue;
+      if (!source.postPath.test(href)) continue;
+      // 공지성 낮은 번호/고정글 대략 스킵 (아카 공지)
+      if (/\/b\/yazzal\/(6457546|34868656|97065903|9434376)\b/i.test(href)) continue;
+      seen[href] = 1;
+      links.push(href);
+    }
+    // markdown links
+    var re2 = /\]\((https?:\/\/[^)]+)\)/gi;
+    while ((m = re2.exec(html))) {
+      var href2 = normalizeUrl(m[1], listUrl);
+      if (!href2 || seen[href2]) continue;
+      if (!source.postPath.test(href2)) continue;
+      seen[href2] = 1;
+      links.push(href2);
+    }
+    return links;
   }
 
   function renderGallery(images) {
@@ -395,82 +331,67 @@
   };
 
   async function runSearch() {
-    setStatus("검색 시작...", "");
+    setStatus("검색 시작... (첨부사진만)", "");
     setRunning(true);
     galleryEl.innerHTML = "";
 
     var p = period();
     abortCtrl = new AbortController();
-
-    var posts = [];
-    var seenPost = {};
     var images = [];
     var seenImg = {};
     var failCount = 0;
+
+    function addImgs(arr) {
+      for (var i = 0; i < arr.length; i++) {
+        if (seenImg[arr[i]]) continue;
+        seenImg[arr[i]] = 1;
+        images.push(arr[i]);
+      }
+      if (arr.length) renderGallery(images);
+    }
 
     try {
       for (var s = 0; s < SOURCES.length; s++) {
         throwIfAborted();
         var src = SOURCES[s];
-        setStatus(src.name + " 읽는 중...");
+        setStatus(src.name + " · 첨부CDN만 수집 중...");
         var urls = src.urls(p.arca);
+        var postLinks = [];
+        var seenPost = {};
+
         for (var u = 0; u < urls.length; u++) {
           throwIfAborted();
           try {
             var html = await fetchText(urls[u]);
-            var found = extractPosts(html, src.site, urls[u], src.boardMode);
-            for (var i = 0; i < found.length; i++) {
-              if (seenPost[found[i].href]) continue;
-              seenPost[found[i].href] = 1;
-              posts.push(found[i]);
+            // 1) 목록에 이미 붙어있는 첨부 이미지 (일베 ncache 등)
+            addImgs(extractAllowedImages(html, urls[u], src));
+            // 2) 글로 들어갈 링크 모으기
+            var links = extractPostLinks(html, src, urls[u]);
+            for (var L = 0; L < links.length; L++) {
+              if (seenPost[links[L]]) continue;
+              seenPost[links[L]] = 1;
+              postLinks.push(links[L]);
             }
-            // 목록 페이지 이미지는 광고/썸네일 투성이라 절대 안 긁음
-            setStatus(src.name + " · 글 " + found.length + "개 확보 (누적 " + posts.length + ")");
+            setStatus(
+              src.name + " · 사진 " + images.length + "장 · 글링크 " + postLinks.length
+            );
           } catch (e) {
             if (e.name === "AbortError" || e.message === "STOPPED") throw e;
             failCount++;
-            setStatus(src.name + " 실패, 다음으로...");
           }
         }
-      }
 
-      posts.sort(function (a, b) {
-        return b.views - a.views;
-      });
-      var top = posts.slice(0, p.take);
-
-      for (var n = 0; n < top.length; n++) {
-        throwIfAborted();
-        var post = top[n];
-        setStatus(
-          "본문 " +
-            (n + 1) +
-            "/" +
-            top.length +
-            " · " +
-            post.title.slice(0, 22)
-        );
-        try {
-          var postHtml = await fetchText(post.href);
-          // 본문(article) 핵심 사진만, 글당 최대 6장
-          var imgs = extractImages(postHtml, post.href, {
-            onlyContent: true,
-            max: 6,
-          });
-          for (var k = 0; k < imgs.length; k++) {
-            if (seenImg[imgs[k]]) continue;
-            seenImg[imgs[k]] = 1;
-            images.push(imgs[k]);
+        // 본문 첨부 더 뽑기 (화이트리스트만)
+        var digMax = Math.min(postLinks.length, p.takePosts);
+        for (var n = 0; n < digMax; n++) {
+          throwIfAborted();
+          setStatus(src.name + " 본문 " + (n + 1) + "/" + digMax);
+          try {
+            var postHtml = await fetchText(postLinks[n]);
+            addImgs(extractAllowedImages(postHtml, postLinks[n], src));
+          } catch (e) {
+            if (e.name === "AbortError" || e.message === "STOPPED") throw e;
           }
-          images.sort(function (a, b) {
-            return (
-              Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a)) ||
-              scoreContentImage(b) - scoreContentImage(a)
-            );
-          });
-          renderGallery(images);
-        } catch (e) {
-          if (e.name === "AbortError" || e.message === "STOPPED") throw e;
         }
       }
 
@@ -478,13 +399,13 @@
       if (!images.length) {
         setStatus(
           failCount
-            ? "사이트 접속이 막혔어. 와이파이/데이터 바꿔서 다시 눌러봐."
-            : "사진을 못 모았어. 다시 검색 눌러봐.",
+            ? "사이트 접속 실패. 잠시 후 다시 눌러봐."
+            : "첨부 사진을 못 찾았어. 다시 검색 눌러봐.",
           "error"
         );
         return;
       }
-      setStatus(p.ko + " · 사진 " + images.length + "장", "ok");
+      setStatus(p.ko + " · 첨부사진 " + images.length + "장 (광고 제외)", "ok");
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
@@ -498,12 +419,11 @@
 
   searchBtn.addEventListener("click", function () {
     if (running) return;
-    setStatus("버튼 눌림 · 준비 중...", "");
     runSearch().catch(function (e) {
       setRunning(false);
       setStatus("오류: " + (e && e.message ? e.message : e), "error");
     });
   });
 
-  setStatus("기간 고르고 검색 눌러봐.", "");
+  setStatus("검색 누르면 첨부사진만 불러옴 (광고 차단).", "");
 })();

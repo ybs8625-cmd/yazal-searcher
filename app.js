@@ -43,6 +43,14 @@
   const URL_BAN =
     /pixiv|pximg|danbooru|donmai|gelbooru|sankaku|rule34|booru|zerochan|wixmp|waifu|hentai|anime|manga|nhentai|civitai|novelai|aiart/i;
 
+  // 광고·트래킹·사이드바 이미지
+  const AD_URL =
+    /doubleclick|googlesyndication|googleadservices|googletag|adsense|pagead|adservice|amazon-adsystem|taboola|outbrain|adsrvr|adnxs|adcolony|advert|adsystem|adserver|adimg|ads\.|\/ads\/|\/ad\/|banner|sponsor|promo|tracking|pixel|analytics|scorecard|facebook\.com\/tr|criteo|moatads|imrworldwide|stickyad|popunder|popads|adfit|dable|realclick|adman|ad-cdn|adcdn|kaspersky|creativecdn|serving-sys|ad\.|adsales|adtech|yieldmo|pubmatic|openx|rubicon|casalemedia|ads-twitter|ads-api/i;
+
+  // 본문 첨부/업로드로 보이는 경로 (가점)
+  const CONTENT_PATH =
+    /\/files?\/|\/attach|\/upload|\/uploads?\/|\/image\/|\/images\/|\/img\/|\/media\/|\/data\/|ncache\.|dcimg|ac\.namu\.la|namu\.la|hygall\.|ilbe\.com\/files|postfiles|blogfiles|editor|viewer|original|full/i;
+
   var selectedPeriod = "day";
   var abortCtrl = null;
   var running = false;
@@ -233,30 +241,119 @@
     return posts;
   }
 
-  function extractImages(html, base) {
-    var out = [];
+  /** 광고/레이아웃 덩어리 제거 후 본문만 남김 */
+  function extractArticleHtml(html) {
+    var s = String(html || "");
+
+    // 스크립트·스타일·noscript 제거
+    s = s.replace(/<script[\s\S]*?<\/script>/gi, " ");
+    s = s.replace(/<style[\s\S]*?<\/style>/gi, " ");
+    s = s.replace(/<noscript[\s\S]*?<\/noscript>/gi, " ");
+
+    // 광고/사이드/헤더/푸터 블록 제거
+    s = s.replace(
+      /<(aside|header|footer|nav)[\s\S]*?<\/\1>/gi,
+      " "
+    );
+    s = s.replace(
+      /<[^>]+(?:class|id)=["'][^"']*(?:ad-|ads|advert|sponsor|banner|sidebar|side-bar|recommend|related|popup|modal|cookie|gnb|lnb|footer|header|navi)[^"']*["'][^>]*>[\s\S]*?<\/[^>]+>/gi,
+      " "
+    );
+
+    // 본문 후보 영역만 추출
+    var chunks = [];
+    var patterns = [
+      /<article[\s\S]*?<\/article>/gi,
+      /<(?:div|section)[^>]*(?:class|id)=["'][^"']*(?:article|content|write_div|view-content|post-content|board-content|reading|fr-view|viewer|entry-content|article_body|article-body|post_content|gall_view|writing_view|board-view)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|section)>/gi,
+    ];
+    for (var p = 0; p < patterns.length; p++) {
+      var m;
+      var re = patterns[p];
+      while ((m = re.exec(s))) {
+        if (m[0] && m[0].length > 80) chunks.push(m[0]);
+      }
+    }
+
+    if (chunks.length) {
+      // 가장 긴 본문 덩어리 = 핵심 내용일 확률 높음
+      chunks.sort(function (a, b) {
+        return b.length - a.length;
+      });
+      return chunks.slice(0, 2).join("\n");
+    }
+    return s;
+  }
+
+  function isJunkOrAdUrl(u) {
+    if (!u) return true;
+    if (AD_URL.test(u) || URL_BAN.test(u)) return true;
+    if (/sprite|icon|logo|emoji|avatar|profile|favicon|emoticon|stamp|button|badge|thumb_user|nickname|captcha/i.test(u))
+      return true;
+    // 너무 작은 이미지/썸네일 힌트
+    if (/[?&](w|width|h|height)=(1|2|3|4|5|10|16|20|24|32|40|48|50|64)(\D|$)/i.test(u))
+      return true;
+    if (/(\/|=)(16x16|32x32|48x48|64x64|1x1|thumb_s|tiny|mini)(\/|$|\.)/i.test(u))
+      return true;
+    if (/data:image/i.test(u)) return true;
+    return false;
+  }
+
+  function scoreContentImage(u) {
+    var score = 0;
+    if (CONTENT_PATH.test(u)) score += 40;
+    if (/\.(jpe?g|gif)(\?|$)/i.test(u)) score += 15;
+    if (/\.png(\?|$)/i.test(u)) score += 5;
+    if (/original|full|large|big|attach|upload/i.test(u)) score += 20;
+    if (/thumb|small|preview|resize|thumbnail|s\.jpg|_s\./i.test(u)) score -= 25;
+    if (/ncache\.ilbe|dcimg|ac\.namu\.la|namu\.la|hygall/i.test(u)) score += 25;
+    // 쿼리에 큰 사이즈
+    if (/[?&](w|width)=(8|9|[1-9]\d{2,})/i.test(u)) score += 10;
+    return score;
+  }
+
+  function extractImages(html, base, opts) {
+    opts = opts || {};
+    var onlyContent = opts.onlyContent !== false; // 기본: 본문만
+    var body = onlyContent ? extractArticleHtml(html) : html;
+
+    var scored = [];
     var seen = {};
+
     function push(raw) {
       var u = normalizeUrl(raw, base);
       if (!u) return;
-      if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u.split("#")[0])) return;
-      if (/sprite|icon|logo|emoji|avatar|banner|ads?|pixel|favicon|emoticon/i.test(u))
-        return;
-      if (URL_BAN.test(u)) return;
+      if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u.split("?")[0])) return;
+      if (isJunkOrAdUrl(u)) return;
       u = u.split("#")[0];
       if (seen[u]) return;
       seen[u] = 1;
-      out.push(u);
+      var sc = scoreContentImage(u);
+      // 본문 첨부 느낌이 거의 없으면 버림
+      if (sc < 15) return;
+      scored.push({ u: u, sc: sc });
     }
 
     var x;
-    var re1 = /(?:src|data-src|data-original|data-lazy)\s*=\s*["']([^"']+)["']/gi;
-    while ((x = re1.exec(html))) push(x[1]);
+    // lazy/original 우선 속성
+    var re1 =
+      /(?:data-original|data-url|data-src|data-lazy|data-orig-src|src)\s*=\s*["']([^"']+)["']/gi;
+    while ((x = re1.exec(body))) push(x[1]);
     var re2 = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi;
-    while ((x = re2.exec(html))) push(x[1]);
+    while ((x = re2.exec(body))) push(x[1]);
     var re3 =
       /https?:\/\/[^\s"'<>)\\]+?\.(?:jpe?g|png|webp|gif)(?:\?[^\s"'<>)\\]*)?/gi;
-    while ((x = re3.exec(html))) push(x[0].replace(/[.,;)]+$/, ""));
+    while ((x = re3.exec(body))) push(x[0].replace(/[.,;)]+$/, ""));
+
+    scored.sort(function (a, b) {
+      return b.sc - a.sc;
+    });
+
+    // 글당 너무 많이 안 가져감 (광고 잔여 방지)
+    var max = opts.max || 8;
+    var out = [];
+    for (var i = 0; i < scored.length && out.length < max; i++) {
+      out.push(scored[i].u);
+    }
     return out;
   }
 
@@ -327,17 +424,8 @@
               seenPost[found[i].href] = 1;
               posts.push(found[i]);
             }
-            // 목록에 썸네일이 있으면 바로 추가 (반응 빨리)
-            var thumbs = extractImages(html, urls[u]);
-            for (var t = 0; t < thumbs.length; t++) {
-              if (seenImg[thumbs[t]]) continue;
-              seenImg[thumbs[t]] = 1;
-              images.push(thumbs[t]);
-            }
-            if (thumbs.length) renderGallery(images);
-            setStatus(
-              src.name + " · 글 " + found.length + "개 · 사진 " + images.length + "장"
-            );
+            // 목록 페이지 이미지는 광고/썸네일 투성이라 절대 안 긁음
+            setStatus(src.name + " · 글 " + found.length + "개 확보 (누적 " + posts.length + ")");
           } catch (e) {
             if (e.name === "AbortError" || e.message === "STOPPED") throw e;
             failCount++;
@@ -364,14 +452,21 @@
         );
         try {
           var postHtml = await fetchText(post.href);
-          var imgs = extractImages(postHtml, post.href);
+          // 본문(article) 핵심 사진만, 글당 최대 6장
+          var imgs = extractImages(postHtml, post.href, {
+            onlyContent: true,
+            max: 6,
+          });
           for (var k = 0; k < imgs.length; k++) {
             if (seenImg[imgs[k]]) continue;
             seenImg[imgs[k]] = 1;
             images.push(imgs[k]);
           }
           images.sort(function (a, b) {
-            return Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a));
+            return (
+              Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a)) ||
+              scoreContentImage(b) - scoreContentImage(a)
+            );
           });
           renderGallery(images);
         } catch (e) {

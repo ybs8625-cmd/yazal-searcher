@@ -33,6 +33,7 @@
   var galleryEl = document.getElementById("gallery");
   var moreBtn = document.getElementById("moreBtn");
   var moreSearchBtn = document.getElementById("moreSearchBtn");
+  var searchingBtn = document.getElementById("searchingBtn");
   var searchBtn = document.getElementById("searchBtn");
   var stopBtn = document.getElementById("stopBtn");
   var lightbox = document.getElementById("lightbox");
@@ -48,6 +49,7 @@
     !periodsEl ||
     !moreBtn ||
     !moreSearchBtn ||
+    !searchingBtn ||
     !filterGifBtn ||
     !filterPhotoBtn
   ) {
@@ -100,6 +102,7 @@
     var msg = head + " · 화면 " + s.shown + "/" + totalSel;
     if (s.left > 0) msg += " · 남은 " + s.left;
     setStatus(msg, kind || (running ? "" : "ok"));
+    updateFooterBtns();
   }
 
   function filteredItems() {
@@ -635,10 +638,39 @@
   var JJ_ALLOW = /^https?:\/\/img\d*\.jjtv\.kr\//i;
   var JJ_ABS = /https?:\/\/img\d*\.jjtv\.kr\/[^\s"'<>)\\]+/gi;
 
+  function batchCap() {
+    if (visibleCount <= 0) return PAGE_SIZE;
+    return Math.ceil(visibleCount / PAGE_SIZE) * PAGE_SIZE;
+  }
+
   function updateFooterBtns() {
     var list = filteredItems();
+    var shown = Math.min(visibleCount, list.length);
+    var cap = batchCap();
     var left = list.length - visibleCount;
-    // 검색 중이어도 이미 확보·필터된 분량은 더보기로 볼 수 있게
+
+    if (running) {
+      searchingBtn.hidden = false;
+      searchingBtn.textContent = "검색중(" + shown + "/" + cap + ")";
+    } else {
+      searchingBtn.hidden = true;
+    }
+
+    // 현재 구간이 찼고 더 볼 게 있으면 더보기
+    if (left > 0 && shown >= cap) {
+      moreBtn.hidden = false;
+      moreBtn.disabled = false;
+      moreBtn.textContent =
+        "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
+      moreSearchBtn.hidden = true;
+      return;
+    }
+    // 검색 중이고 아직 구간 채우는 중이면 더보기는 숨김 (검색중 표시만)
+    if (running && shown < cap) {
+      moreBtn.hidden = true;
+      moreSearchBtn.hidden = true;
+      return;
+    }
     if (left > 0) {
       moreBtn.hidden = false;
       moreBtn.disabled = false;
@@ -1188,6 +1220,8 @@
     galleryEl.innerHTML = "";
     moreBtn.hidden = true;
     moreSearchBtn.hidden = true;
+    searchingBtn.hidden = false;
+    searchingBtn.textContent = "검색중(0/" + PAGE_SIZE + ")";
     abortCtrl = new AbortController();
     refreshStatus(plan.label + " 검색 시작");
 

@@ -1,5 +1,8 @@
 (() => {
   var PAGE_SIZE = 50;
+  var MORE_BATCH = 20;
+  var MORE_PAGES = 5;
+  var MAX_PAGES = 120;
   var PERIODS = [
     { id: "day", ko: "일간", days: 1, pages: 4, take: 24 },
     { id: "week", ko: "주간", days: 7, pages: 8, take: 40 },
@@ -15,6 +18,7 @@
   var allItems = [];
   var seenImg = {};
   var visibleCount = 0;
+  var session = null; // 추가검색용 세션
 
   var periodsEl = document.getElementById("periods");
   var rangeBox = document.getElementById("rangeBox");
@@ -27,13 +31,14 @@
   var statusEl = document.getElementById("status");
   var galleryEl = document.getElementById("gallery");
   var moreBtn = document.getElementById("moreBtn");
+  var moreSearchBtn = document.getElementById("moreSearchBtn");
   var searchBtn = document.getElementById("searchBtn");
   var stopBtn = document.getElementById("stopBtn");
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
   var lightboxClose = document.getElementById("lightboxClose");
 
-  if (!searchBtn || !statusEl || !galleryEl || !periodsEl || !moreBtn) {
+  if (!searchBtn || !statusEl || !galleryEl || !periodsEl || !moreBtn || !moreSearchBtn) {
     alert("페이지 로딩 오류. 새로고침 해줘.");
     return;
   }
@@ -213,8 +218,9 @@
     running = on;
     searchBtn.disabled = on;
     stopBtn.disabled = !on;
+    moreSearchBtn.disabled = on;
     searchBtn.textContent = on ? "검색 중..." : "검색";
-    updateMoreBtn();
+    updateFooterBtns();
   }
 
   function throwIfAborted() {
@@ -508,21 +514,32 @@
   var JJ_ALLOW = /^https?:\/\/img\d*\.jjtv\.kr\//i;
   var JJ_ABS = /https?:\/\/img\d*\.jjtv\.kr\/[^\s"'<>)\\]+/gi;
 
-  function updateMoreBtn() {
+  function updateFooterBtns() {
     var left = allItems.length - visibleCount;
-    if (running || left <= 0) {
+    if (running) {
       moreBtn.hidden = true;
+      moreSearchBtn.hidden = true;
       return;
     }
-    moreBtn.hidden = false;
-    moreBtn.textContent =
-      "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
+    if (left > 0) {
+      moreBtn.hidden = false;
+      moreBtn.textContent =
+        "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
+      moreSearchBtn.hidden = true;
+      return;
+    }
+    moreBtn.hidden = true;
+    if (session && !session.done && allItems.length > 0) {
+      moreSearchBtn.hidden = false;
+      moreSearchBtn.textContent = "추가검색 · 다음 조회수 자료";
+    } else {
+      moreSearchBtn.hidden = true;
+    }
   }
 
   function renderVisible(force) {
     var want = Math.min(visibleCount, allItems.length);
     var current = galleryEl.querySelectorAll(".shot").length;
-    // 검색 중 정렬이 자주 바뀌면 상위 50만 다시 그림
     if (force || current !== want || want <= PAGE_SIZE) {
       galleryEl.innerHTML = "";
       for (var i = 0; i < want; i++) {
@@ -547,7 +564,6 @@
         })(allItems[i].url);
       }
     } else {
-      // 더보기로만 늘어날 때: 뒤에만 추가
       for (var j = current; j < want; j++) {
         (function (src) {
           var btn = document.createElement("button");
@@ -570,7 +586,7 @@
         })(allItems[j].url);
       }
     }
-    updateMoreBtn();
+    updateFooterBtns();
   }
 
   var paintTimer = null;
@@ -588,6 +604,7 @@
   function addImgs(arr, views) {
     var v = views || 0;
     var changed = false;
+    var added = 0;
     for (var i = 0; i < arr.length; i++) {
       var u = arr[i];
       if (!u) continue;
@@ -603,29 +620,50 @@
       seenImg[u] = 1;
       allItems.push({ url: u, views: v });
       changed = true;
+      added++;
     }
-    if (!changed) return;
+    if (!changed) return 0;
     allItems.sort(function (a, b) {
       return b.views - a.views;
     });
-    // 화면에는 최대 PAGE_SIZE만 유지(더보기 전)
     if (visibleCount === 0 && allItems.length) {
       visibleCount = Math.min(PAGE_SIZE, allItems.length);
     } else if (visibleCount > 0 && visibleCount < PAGE_SIZE) {
       visibleCount = Math.min(PAGE_SIZE, allItems.length);
     }
     schedulePaint(true);
+    return added;
   }
 
-  async function scrapeBobae(plan) {
-    var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
-    var VIEW_M = "https://m.bobaedream.co.kr/board/bbs_view/nsfw/";
-    var VIEW_D = "https://www.bobaedream.co.kr/view?code=nsfw&No=";
-    var collected = [];
+  function newBucket() {
+    return { posts: [], dig: 0, pages: 0, empty: false };
+  }
 
-    for (var page = 1; page <= plan.pages; page++) {
+  function mergeIntoBucket(bucket, list) {
+    var map = {};
+    for (var i = 0; i < bucket.posts.length; i++) {
+      map[bucket.posts[i].id] = bucket.posts[i];
+    }
+    for (var j = 0; j < list.length; j++) {
+      var p = list[j];
+      var prev = map[p.id];
+      if (!prev || p.views > prev.views) map[p.id] = p;
+    }
+    var out = [];
+    for (var k in map)
+      if (Object.prototype.hasOwnProperty.call(map, k)) out.push(map[k]);
+    out.sort(function (a, b) {
+      return b.views - a.views;
+    });
+    bucket.posts = out;
+  }
+
+  async function fetchBobLists(plan, fromPage, toPage) {
+    var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
+    var collected = [];
+    for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + plan.pages + " · 확보 " + allItems.length + "장");
+      setStatus("목록 수집 중... " + page + "/" + toPage + " · 확보 " + allItems.length + "장");
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
         collected = collected.concat(parseBobPosts(html, plan));
@@ -633,12 +671,17 @@
         if (e.name === "AbortError") throw e;
       }
     }
+    return collected;
+  }
 
-    var ranked = mergePosts(collected);
-    var take = Math.min(ranked.length, plan.take);
+  async function digBobPosts(bucket, count) {
+    var VIEW_M = "https://m.bobaedream.co.kr/board/bbs_view/nsfw/";
+    var VIEW_D = "https://www.bobaedream.co.kr/view?code=nsfw&No=";
+    var take = Math.min(count, bucket.posts.length - bucket.dig);
+    var before = allItems.length;
     for (var n = 0; n < take; n++) {
       throwIfAborted();
-      var post = ranked[n];
+      var post = bucket.posts[bucket.dig + n];
       setStatus(
         "사진 모으는 중... " +
           (n + 1) +
@@ -674,17 +717,46 @@
         }
       }
     }
+    bucket.dig += take;
+    return allItems.length - before;
   }
 
-  async function scrapeGamemeca(plan) {
-    var LIST = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
-    var VIEW =
-      "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery&gid=";
-    var collected = [];
+  async function scrapeBobae(plan, bucket, firstTake) {
+    if (bucket.pages < plan.pages) {
+      var got = await fetchBobLists(plan, bucket.pages + 1, plan.pages);
+      mergeIntoBucket(bucket, got);
+      bucket.pages = plan.pages;
+    }
+    return digBobPosts(bucket, firstTake);
+  }
 
-    for (var page = 1; page <= plan.pages; page++) {
+  async function extendBobae(plan, bucket) {
+    var gained = 0;
+    if (bucket.posts.length - bucket.dig < MORE_BATCH && !bucket.empty) {
+      if (bucket.pages >= MAX_PAGES) {
+        bucket.empty = true;
+      } else {
+        var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
+        var got = await fetchBobLists(plan, bucket.pages + 1, to);
+        var beforeLen = bucket.posts.length;
+        mergeIntoBucket(bucket, got);
+        bucket.pages = to;
+        if (bucket.posts.length === beforeLen) bucket.empty = true;
+      }
+    }
+    gained += await digBobPosts(bucket, MORE_BATCH);
+    if (bucket.dig >= bucket.posts.length && bucket.empty) {
+      /* no more */
+    }
+    return gained;
+  }
+
+  async function fetchGmLists(plan, fromPage, toPage) {
+    var LIST = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
+    var collected = [];
+    for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + plan.pages + " · 확보 " + allItems.length + "장");
+      setStatus("목록 수집 중... " + page + "/" + toPage + " · 확보 " + allItems.length + "장");
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
         collected = collected.concat(parseGmPosts(html, plan));
@@ -692,15 +764,24 @@
         if (e.name === "AbortError") throw e;
       }
     }
+    return collected;
+  }
 
-    var ranked = mergePosts(collected);
-    for (var t = 0; t < ranked.length; t++) {
-      if (ranked[t].thumb) addImgs([ranked[t].thumb], ranked[t].views);
+  async function digGmPosts(bucket, count, withThumbs) {
+    var VIEW =
+      "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery&gid=";
+    var take = Math.min(count, bucket.posts.length - bucket.dig);
+    var before = allItems.length;
+    if (withThumbs) {
+      for (var t = bucket.dig; t < bucket.dig + take; t++) {
+        if (bucket.posts[t] && bucket.posts[t].thumb) {
+          addImgs([bucket.posts[t].thumb], bucket.posts[t].views);
+        }
+      }
     }
-    var take = Math.min(ranked.length, plan.take);
     for (var n = 0; n < take; n++) {
       throwIfAborted();
-      var post = ranked[n];
+      var post = bucket.posts[bucket.dig + n];
       setStatus(
         "사진 모으는 중... " +
           (n + 1) +
@@ -720,16 +801,40 @@
         if (e.name === "AbortError") throw e;
       }
     }
+    bucket.dig += take;
+    return allItems.length - before;
   }
 
-  async function scrapeJjtv(plan) {
-    var LIST = "https://jjtv.kr/15";
-    var VIEW = "https://jjtv.kr/15/";
-    var collected = [];
+  async function scrapeGamemeca(plan, bucket, firstTake) {
+    if (bucket.pages < plan.pages) {
+      var got = await fetchGmLists(plan, bucket.pages + 1, plan.pages);
+      mergeIntoBucket(bucket, got);
+      bucket.pages = plan.pages;
+    }
+    return digGmPosts(bucket, firstTake, true);
+  }
 
-    for (var page = 1; page <= plan.pages; page++) {
+  async function extendGamemeca(plan, bucket) {
+    if (bucket.posts.length - bucket.dig < MORE_BATCH && !bucket.empty) {
+      if (bucket.pages >= MAX_PAGES) bucket.empty = true;
+      else {
+        var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
+        var got = await fetchGmLists(plan, bucket.pages + 1, to);
+        var beforeLen = bucket.posts.length;
+        mergeIntoBucket(bucket, got);
+        bucket.pages = to;
+        if (bucket.posts.length === beforeLen) bucket.empty = true;
+      }
+    }
+    return digGmPosts(bucket, MORE_BATCH, true);
+  }
+
+  async function fetchJjLists(plan, fromPage, toPage) {
+    var LIST = "https://jjtv.kr/15";
+    var collected = [];
+    for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + plan.pages + " · 확보 " + allItems.length + "장");
+      setStatus("목록 수집 중... " + page + "/" + toPage + " · 확보 " + allItems.length + "장");
       try {
         var html = await fetchText(LIST + (page > 1 ? "?page=" + page : ""));
         collected = collected.concat(parseJjtvPosts(html, plan));
@@ -737,12 +842,16 @@
         if (e.name === "AbortError") throw e;
       }
     }
+    return collected;
+  }
 
-    var ranked = mergePosts(collected);
-    var take = Math.min(ranked.length, plan.take);
+  async function digJjPosts(bucket, count) {
+    var VIEW = "https://jjtv.kr/15/";
+    var take = Math.min(count, bucket.posts.length - bucket.dig);
+    var before = allItems.length;
     for (var n = 0; n < take; n++) {
       throwIfAborted();
-      var post = ranked[n];
+      var post = bucket.posts[bucket.dig + n];
       setStatus(
         "사진 모으는 중... " +
           (n + 1) +
@@ -766,6 +875,48 @@
         if (e.name === "AbortError") throw e;
       }
     }
+    bucket.dig += take;
+    return allItems.length - before;
+  }
+
+  async function scrapeJjtv(plan, bucket, firstTake) {
+    if (bucket.pages < plan.pages) {
+      var got = await fetchJjLists(plan, bucket.pages + 1, plan.pages);
+      mergeIntoBucket(bucket, got);
+      bucket.pages = plan.pages;
+    }
+    return digJjPosts(bucket, firstTake);
+  }
+
+  async function extendJjtv(plan, bucket) {
+    if (bucket.posts.length - bucket.dig < MORE_BATCH && !bucket.empty) {
+      if (bucket.pages >= MAX_PAGES) bucket.empty = true;
+      else {
+        var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
+        var got = await fetchJjLists(plan, bucket.pages + 1, to);
+        var beforeLen = bucket.posts.length;
+        mergeIntoBucket(bucket, got);
+        bucket.pages = to;
+        if (bucket.posts.length === beforeLen) bucket.empty = true;
+      }
+    }
+    return digJjPosts(bucket, MORE_BATCH);
+  }
+
+  function sessionCanExtend(s) {
+    if (!s || s.done) return false;
+    var buckets = [s.bob, s.gm, s.jj];
+    for (var i = 0; i < buckets.length; i++) {
+      var b = buckets[i];
+      if (b.dig < b.posts.length) return true;
+      if (!b.empty && b.pages < MAX_PAGES) return true;
+    }
+    return false;
+  }
+
+  function refreshSessionDone() {
+    if (!session) return;
+    if (!sessionCanExtend(session)) session.done = true;
   }
 
   function closeLightbox() {
@@ -801,6 +952,7 @@
       "ok"
     );
     setRunning(false);
+    refreshSessionDone();
     renderVisible(true);
   };
 
@@ -809,7 +961,7 @@
     var before = visibleCount;
     visibleCount = Math.min(allItems.length, visibleCount + PAGE_SIZE);
     if (visibleCount === before) {
-      updateMoreBtn();
+      updateFooterBtns();
       return;
     }
     renderVisible(false);
@@ -819,6 +971,15 @@
     );
   };
 
+  moreSearchBtn.onclick = function () {
+    if (running || !session || session.done) return;
+    runMoreSearch().catch(function (e) {
+      setRunning(false);
+      setStatus("오류: " + (e && e.message ? e.message : e), "error");
+      updateFooterBtns();
+    });
+  };
+
   async function runSearch() {
     var plan = getSearchPlan();
     setStatus(plan.label + " · 조회수순 검색 시작...", "");
@@ -826,19 +987,28 @@
     allItems = [];
     seenImg = {};
     visibleCount = 0;
+    session = {
+      plan: plan,
+      bob: newBucket(),
+      gm: newBucket(),
+      jj: newBucket(),
+      done: false,
+    };
     galleryEl.innerHTML = "";
     moreBtn.hidden = true;
+    moreSearchBtn.hidden = true;
     abortCtrl = new AbortController();
 
     try {
-      await scrapeBobae(plan);
-      await scrapeGamemeca(plan);
-      await scrapeJjtv(plan);
+      await scrapeBobae(plan, session.bob, plan.take);
+      await scrapeGamemeca(plan, session.gm, plan.take);
+      await scrapeJjtv(plan, session.jj, plan.take);
+      refreshSessionDone();
 
       setRunning(false);
       if (!allItems.length) {
         setStatus("해당 기간 이미지를 못 모았어. 다시 검색 눌러봐.", "error");
-        moreBtn.hidden = true;
+        updateFooterBtns();
         return;
       }
       if (visibleCount === 0) {
@@ -856,6 +1026,7 @@
       );
     } catch (e) {
       setRunning(false);
+      refreshSessionDone();
       if (e.name === "AbortError" || e.message === "STOPPED") {
         if (visibleCount === 0 && allItems.length) {
           visibleCount = Math.min(PAGE_SIZE, allItems.length);
@@ -868,6 +1039,61 @@
         return;
       }
       setStatus("오류: " + (e.message || e), "error");
+      updateFooterBtns();
+    }
+  }
+
+  async function runMoreSearch() {
+    if (!session || session.done) return;
+    var plan = session.plan;
+    var beforeCount = allItems.length;
+    setStatus("추가검색 · 다음 조회수 자료 수집 중...", "");
+    setRunning(true);
+    abortCtrl = new AbortController();
+
+    try {
+      await extendBobae(plan, session.bob);
+      await extendGamemeca(plan, session.gm);
+      await extendJjtv(plan, session.jj);
+      refreshSessionDone();
+      setRunning(false);
+
+      var gained = allItems.length - beforeCount;
+      if (!gained) {
+        session.done = true;
+        updateFooterBtns();
+        setStatus(
+          "더 이상 새 사진이 없어. 확보 " + allItems.length + "장",
+          "ok"
+        );
+        return;
+      }
+      // 새로 모은 건 더보기로 이어서 보게
+      renderVisible(true);
+      setStatus(
+        "추가검색 완료 · +" +
+          gained +
+          "장 · 확보 " +
+          allItems.length +
+          "장 · 화면 " +
+          visibleCount +
+          "장",
+        "ok"
+      );
+      updateFooterBtns();
+    } catch (e) {
+      setRunning(false);
+      refreshSessionDone();
+      if (e.name === "AbortError" || e.message === "STOPPED") {
+        renderVisible(true);
+        setStatus(
+          "중지 · 확보 " + allItems.length + "장 · 화면 " + visibleCount + "장",
+          "ok"
+        );
+        return;
+      }
+      setStatus("오류: " + (e.message || e), "error");
+      updateFooterBtns();
     }
   }
 
@@ -876,6 +1102,7 @@
     runSearch().catch(function (e) {
       setRunning(false);
       setStatus("오류: " + (e && e.message ? e.message : e), "error");
+      updateFooterBtns();
     });
   });
 

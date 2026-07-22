@@ -178,7 +178,7 @@ button:disabled {
   object-fit: cover;
 }
 .gallery:empty::after {
-  content: "5.3  일/주/월 간 검색 업데이트\A 6.0  과거 자료 검색을 위한 기간 설정 업데이트\A 6.1  50장씩 더보기 기능 업데이트(사진 닫기 버그 fix)";
+  content: "5.3  일/주/월 간 검색 업데이트\A 6.0  과거 자료 검색을 위한 기간 설정 업데이트\A 6.1  50장씩 더보기 기능 업데이트(사진 닫기 버그 fix)\A 6.2  확보분 다 보면 추가검색으로 이어서 수집";
   white-space: pre-line;
   grid-column: 1 / -1;
   text-align: left;
@@ -192,7 +192,9 @@ button:disabled {
 
 .more-wrap {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   margin: 16px 0 8px;
 }
 button.more {
@@ -207,9 +209,17 @@ button.more {
   font-size: 1rem;
   min-width: min(320px, 92vw);
 }
+button.more-search {
+  border-color: #7a4a20;
+  background: #2a1c12;
+  color: #ffd28a;
+}
 button.more:hover {
   border-color: var(--accent);
   color: #fff;
+}
+button.more-search:hover {
+  border-color: var(--accent2);
 }
 button.more[hidden] { display: none; }
 

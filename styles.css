@@ -134,7 +134,7 @@ button:disabled {
   object-fit: cover;
 }
 .gallery:empty::after {
-  content: "기간 고르고 검색 누르면 사진이 나와.";
+  content: "기간 고르고 검색 누르면 사진이 보물이 한가득.";
   grid-column: 1 / -1;
   text-align: center;
   color: var(--muted);

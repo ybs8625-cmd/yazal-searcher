@@ -1,69 +1,86 @@
 (() => {
   /**
-   * 핵심: 광고 URL은 절대 허용 안 함.
-   * 각 커뮤니티 "첨부/본문 CDN" 화이트리스트만 통과.
+   * 실사 위주 3곳 (애니 채널인 아카 야짤 제외)
+   * - 일베: 실사/은꼴 첨부
+   * - 유튜브: 실사 썸네일 (유유베)
+   * - 해연갤: 해외연예 실사
    */
   const SOURCES = [
     {
       name: "일베",
       site: "ilbe.com",
       allowHost: /^(?:[\w-]+\.)?ncache\.ilbe\.com$/i,
-      // 목록에 붙는 files/attach 가 본문 사진
+      mustPath: /\/files\d*\/attach\//i,
       urls: function () {
-        return [
-          "https://www.ilbe.com/search?keyword=%EC%95%BC%EC%A7%A4",
-          "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4%EC%82%AC",
-          "https://www.ilbe.com/search?keyword=%EC%9D%80%EA%BC%B4",
-          "https://www.ilbe.com/search?keyword=%EC%95%BC%EC%A7%A4+gif",
-          "https://www.ilbe.com/list/celeb",
-          "https://www.ilbe.com/list/celeb?sort=hit",
+        var keys = [
+          "실사 은꼴",
+          "은꼴사",
+          "실사 야짤",
+          "교복 코스프레 은꼴",
+          "글래머 은꼴",
+          "비키니 실사",
+          "아마추어 실사",
+          "셀카 은꼴",
         ];
+        var list = keys.map(function (k) {
+          return "https://www.ilbe.com/search?keyword=" + encodeURIComponent(k);
+        });
+        list.push("https://www.ilbe.com/list/celeb");
+        list.push("https://www.ilbe.com/list/celeb?sort=hit");
+        return list;
       },
     },
     {
-      name: "아카 야짤",
-      site: "arca.live",
-      allowHost: /^(?:ac\.)?namu\.la$/i,
-      urls: function (range) {
-        return [
-          "https://arca.live/b/yazzal?mode=best&sort=rating&range=" + range,
-          "https://arca.live/b/shade?mode=best&sort=rating&range=" + range,
-          "https://arca.live/b/yazzal?mode=best",
-          "https://arca.live/b/shade?mode=best",
+      name: "유튜브",
+      site: "youtube.com",
+      allowHost: /^i\.ytimg\.com$/i,
+      urls: function () {
+        var keys = [
+          "은꼴 실사",
+          "성인 교복 코스프레",
+          "글래머 실사",
+          "비키니 실사",
+          "오피스룩 실사",
+          "걸크러시 실사",
         ];
+        return keys.map(function (k) {
+          return (
+            "https://www.youtube.com/results?search_query=" +
+            encodeURIComponent(k)
+          );
+        });
       },
-      // 목록에 CDN이 잘 안 보여서 글로 들어감
-      digPosts: true,
-      postPath: /arca\.live\/b\/(?:yazzal|shade)\/(\d+)/i,
+      // 검색 결과에서 video id 뽑아 고화질 썸네일 생성
+      buildThumbs: true,
     },
     {
       name: "해연갤",
       site: "hygall.com",
-      // 해연갤 본문 첨부는 보통 files/ 아래
       allowHost: /^(?:[\w-]+\.)?hygall\.com$/i,
-      allowPath: /\/files\/|\/attach|\/xe\/|document_srl/i,
+      mustPath: /\/files\//i,
       urls: function () {
         return [
           "https://hygall.com/?sort=hit",
           "https://hygall.com/ex_all?sort=hit",
-          "https://hygall.com/search?keyword=%EC%9D%80%EA%BC%B4",
-          "https://hygall.com/search?keyword=%EC%95%BC%EC%A7%A4",
+          "https://hygall.com/search?keyword=" + encodeURIComponent("은꼴"),
+          "https://hygall.com/search?keyword=" + encodeURIComponent("비키니"),
+          "https://hygall.com/search?keyword=" + encodeURIComponent("교복"),
         ];
       },
       digPosts: true,
-      postPath: /document_srl=(\d+)|hygall\.com\/(?:ex_all|ex_\w+)\/(\d+)/i,
+      postPath: /document_srl=(\d+)/i,
     },
   ];
 
   const PERIODS = [
-    { id: "day", ko: "일간", arca: "24h", takePosts: 12 },
-    { id: "week", ko: "주간", arca: "7d", takePosts: 16 },
-    { id: "month", ko: "월간", arca: "30d", takePosts: 20 },
+    { id: "day", ko: "일간", takePosts: 10 },
+    { id: "week", ko: "주간", takePosts: 14 },
+    { id: "month", ko: "월간", takePosts: 18 },
   ];
 
-  // UI/광고/아이콘 경로
+  // 애니/그림/광고 차단
   const PATH_BAN =
-    /\/box\/|\/common\/|\/layout\/|\/modules\/|\/addons\/|sns\.jpg|icon|logo|button|badge|emoticon|favicon|captcha|banner|sponsor|ads?\.|\/ad\/|pelican|ad4989|naverads|mediacategory|wcs\.naver/i;
+    /\/box\/|\/common\/|\/layout\/|\/modules\/|\/addons\/|sns\.jpg|icon|logo|button|badge|emoticon|favicon|captcha|banner|sponsor|ads?\.|\/ad\/|pelican|ad4989|naverads|mediacategory|anime|manga|pixiv|hentai|waifu|namu\.la/i;
 
   var selectedPeriod = "day";
   var abortCtrl = null;
@@ -212,29 +229,16 @@
     }
   }
 
-  function pathOf(u) {
-    try {
-      return new URL(u).pathname + new URL(u).search;
-    } catch (e) {
-      return u;
-    }
-  }
-
-  /** 화이트리스트 CDN만 통과 — 광고 원천 차단 */
   function isAllowedImage(url, source) {
     if (!url) return false;
-    if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url.split("?")[0])) return false;
     if (PATH_BAN.test(url)) return false;
-    var host = hostOf(url);
-    if (!source.allowHost.test(host)) return false;
-    if (source.allowPath && !source.allowPath.test(pathOf(url))) {
-      // hygall: files/attach 만. 루트 sns.jpg 같은 건 거름
-      return false;
+    // 유튜브는 jpg 썸네일
+    if (source.site === "youtube.com") {
+      return /^i\.ytimg\.com$/i.test(hostOf(url)) && /\/vi\/[\w-]+\//i.test(url);
     }
-    // 일베는 attach 경로만
-    if (source.site === "ilbe.com" && !/\/files\d*\/attach\//i.test(url)) {
-      return false;
-    }
+    if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url.split("?")[0])) return false;
+    if (!source.allowHost.test(hostOf(url))) return false;
+    if (source.mustPath && !source.mustPath.test(url)) return false;
     return true;
   }
 
@@ -245,13 +249,17 @@
       var u = normalizeUrl(raw, base);
       if (!u || seen[u]) return;
       if (!isAllowedImage(u, source)) return;
+      // 유튜브는 maxres/hq 만
+      if (source.site === "youtube.com") {
+        if (!/(maxresdefault|hqdefault|sddefault)\.jpg/i.test(u)) return;
+      }
       seen[u] = 1;
       out.push(u);
     }
 
     var x;
     var reAttr =
-      /(?:data-original|data-url|data-src|data-lazy|data-orig-src|src)\s*=\s*["']([^"']+)["']/gi;
+      /(?:data-original|data-url|data-src|data-lazy|data-thumb|src)\s*=\s*["']([^"']+)["']/gi;
     while ((x = reAttr.exec(html))) push(x[1]);
     var reMd = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi;
     while ((x = reMd.exec(html))) push(x[1]);
@@ -259,7 +267,19 @@
       /https?:\/\/[^\s"'<>)\\]+?\.(?:jpe?g|png|webp|gif)(?:\?[^\s"'<>)\\]*)?/gi;
     while ((x = rePlain.exec(html))) push(x[0].replace(/[.,;)]+$/, ""));
 
-    // gif 우선
+    // 유튜브: video id → 썸네일 생성
+    if (source.buildThumbs) {
+      var ids = {};
+      var reId =
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|\/vi\/)([\w-]{6,})/gi;
+      while ((x = reId.exec(html))) {
+        if (ids[x[1]]) continue;
+        ids[x[1]] = 1;
+        push("https://i.ytimg.com/vi/" + x[1] + "/maxresdefault.jpg");
+        push("https://i.ytimg.com/vi/" + x[1] + "/hqdefault.jpg");
+      }
+    }
+
     out.sort(function (a, b) {
       return Number(/\.gif/i.test(b)) - Number(/\.gif/i.test(a));
     });
@@ -276,19 +296,8 @@
       var href = normalizeUrl(m[1], listUrl);
       if (!href || seen[href]) continue;
       if (!source.postPath.test(href)) continue;
-      // 공지성 낮은 번호/고정글 대략 스킵 (아카 공지)
-      if (/\/b\/yazzal\/(6457546|34868656|97065903|9434376)\b/i.test(href)) continue;
       seen[href] = 1;
       links.push(href);
-    }
-    // markdown links
-    var re2 = /\]\((https?:\/\/[^)]+)\)/gi;
-    while ((m = re2.exec(html))) {
-      var href2 = normalizeUrl(m[1], listUrl);
-      if (!href2 || seen[href2]) continue;
-      if (!source.postPath.test(href2)) continue;
-      seen[href2] = 1;
-      links.push(href2);
     }
     return links;
   }
@@ -331,7 +340,7 @@
   };
 
   async function runSearch() {
-    setStatus("검색 시작... (첨부사진만)", "");
+    setStatus("실사 위주로 수집 중...", "");
     setRunning(true);
     galleryEl.innerHTML = "";
 
@@ -354,8 +363,8 @@
       for (var s = 0; s < SOURCES.length; s++) {
         throwIfAborted();
         var src = SOURCES[s];
-        setStatus(src.name + " · 첨부CDN만 수집 중...");
-        var urls = src.urls(p.arca);
+        setStatus(src.name + " · 실사 수집 중...");
+        var urls = src.urls();
         var postLinks = [];
         var seenPost = {};
 
@@ -363,25 +372,20 @@
           throwIfAborted();
           try {
             var html = await fetchText(urls[u]);
-            // 1) 목록에 이미 붙어있는 첨부 이미지 (일베 ncache 등)
             addImgs(extractAllowedImages(html, urls[u], src));
-            // 2) 글로 들어갈 링크 모으기
             var links = extractPostLinks(html, src, urls[u]);
             for (var L = 0; L < links.length; L++) {
               if (seenPost[links[L]]) continue;
               seenPost[links[L]] = 1;
               postLinks.push(links[L]);
             }
-            setStatus(
-              src.name + " · 사진 " + images.length + "장 · 글링크 " + postLinks.length
-            );
+            setStatus(src.name + " · 실사 " + images.length + "장");
           } catch (e) {
             if (e.name === "AbortError" || e.message === "STOPPED") throw e;
             failCount++;
           }
         }
 
-        // 본문 첨부 더 뽑기 (화이트리스트만)
         var digMax = Math.min(postLinks.length, p.takePosts);
         for (var n = 0; n < digMax; n++) {
           throwIfAborted();
@@ -399,13 +403,13 @@
       if (!images.length) {
         setStatus(
           failCount
-            ? "사이트 접속 실패. 잠시 후 다시 눌러봐."
-            : "첨부 사진을 못 찾았어. 다시 검색 눌러봐.",
+            ? "사이트 접속 실패. 잠시 후 다시."
+            : "실사 사진을 못 모았어. 다시 검색 눌러봐.",
           "error"
         );
         return;
       }
-      setStatus(p.ko + " · 첨부사진 " + images.length + "장 (광고 제외)", "ok");
+      setStatus(p.ko + " · 실사 " + images.length + "장 (애니채널 제외)", "ok");
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
@@ -425,5 +429,5 @@
     });
   });
 
-  setStatus("v4 · 첨부CDN만 수집 (광고 차단). 검색 눌러봐.", "");
+  setStatus("v5 · 실사 위주 (일베·유튜브·해연갤). 검색 눌러봐.", "");
 })();

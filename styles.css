@@ -16,75 +16,37 @@ body {
   font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(900px 420px at 0% 0%, #3a1530 0%, transparent 55%),
-    radial-gradient(700px 380px at 100% 10%, #2a1a08 0%, transparent 50%),
+    radial-gradient(800px 400px at 10% 0%, #3a1530 0%, transparent 55%),
     var(--bg);
 }
 
 .wrap {
-  width: min(1200px, 100%);
+  width: min(1100px, 100%);
   margin: 0 auto;
-  padding: 20px 12px 48px;
+  padding: 28px 14px 48px;
 }
 
-.hero { text-align: center; margin-bottom: 14px; }
-.badge {
-  display: inline-block;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: #12080c;
-  background: linear-gradient(90deg, var(--accent2), #ffe08a);
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-weight: 800;
-}
+.hero { text-align: center; margin-bottom: 18px; }
 h1 {
-  margin: 12px 0 6px;
-  font-size: clamp(2rem, 7vw, 3rem);
-  line-height: 1;
+  margin: 0 0 8px;
+  font-size: clamp(1.8rem, 6vw, 2.6rem);
   letter-spacing: -0.03em;
 }
 .by { margin: 0; color: var(--muted); }
-.by strong { color: var(--accent2); font-size: 1.15em; }
-.desc {
-  margin: 12px auto 0;
-  max-width: 28rem;
-  color: #e8d2f0;
-  line-height: 1.5;
-}
+.by strong { color: var(--accent2); }
 
 .card {
-  background: color-mix(in srgb, var(--card) 94%, black);
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 14px;
-  margin: 10px 0;
+  margin: 0 0 12px;
 }
 .card h2 {
   margin: 0 0 10px;
   font-size: 0.95rem;
   color: #ffd6e8;
 }
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.card-head h2 { margin: 0; }
-.mini-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-button.mini {
-  font: inherit;
-  font-size: 0.75rem;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-button.mini:hover { border-color: var(--accent); color: var(--text); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
@@ -92,64 +54,52 @@ button.mini:hover { border-color: var(--accent); color: var(--text); }
   background: var(--chip);
   color: var(--text);
   border-radius: 999px;
-  padding: 9px 14px;
+  padding: 10px 16px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font: inherit;
+  font-size: 0.95rem;
 }
-.chip:hover { border-color: var(--accent); }
 .chip.on {
-  background: var(--accent);
+  background: #e67700;
   border-color: transparent;
-  color: white;
+  color: #fff;
   font-weight: 700;
 }
-.periods .chip.on { background: #e67700; }
-.sources .chip.on { background: #d9480f; }
 
-.actions { margin-top: 12px; }
-.actions.row {
+.actions {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: 1.5fr 1fr;
   gap: 8px;
 }
 button.primary, button.stop {
-  width: 100%;
   font: inherit;
   border: 0;
   border-radius: 14px;
-  padding: 16px 18px;
+  padding: 16px;
   cursor: pointer;
   font-weight: 800;
-  font-size: 1.02rem;
+  font-size: 1.05rem;
 }
 button.primary {
   background: linear-gradient(90deg, #ff2f7a, #ff7a3d);
-  color: white;
-  box-shadow: 0 8px 24px rgba(255, 77, 141, 0.3);
+  color: #fff;
 }
 button.stop {
   background: #2a1620;
   color: #ffb4c8;
   border: 1px solid #5c2a3a;
 }
-button.stop:not(:disabled):hover {
-  background: #5c1828;
-  color: #fff;
-}
-button.primary:disabled,
-button.stop:disabled {
+button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
-button.primary:active:not(:disabled),
-button.stop:active:not(:disabled) { transform: scale(0.98); }
 
 .status {
-  min-height: 1.4em;
-  margin: 14px 2px 8px;
+  min-height: 1.3em;
+  margin: 14px 0 8px;
+  text-align: center;
   color: var(--muted);
   font-size: 0.92rem;
-  text-align: center;
 }
 .status.error { color: #ff8fa3; }
 .status.ok { color: #ffd28a; }
@@ -158,7 +108,6 @@ button.stop:active:not(:disabled) { transform: scale(0.98); }
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
-  margin-top: 8px;
 }
 @media (min-width: 700px) {
   .gallery { grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -182,16 +131,13 @@ button.stop:active:not(:disabled) { transform: scale(0.98); }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: #1a1422;
 }
-
 .gallery:empty::after {
-  content: "기간·카테고리·커뮤니티 고르고 불러오면 사진만 쭉 나와.";
-  display: block;
+  content: "기간 고르고 검색 누르면 사진이 나와.";
   grid-column: 1 / -1;
   text-align: center;
   color: var(--muted);
-  padding: 28px 10px;
+  padding: 32px 12px;
   border: 1px dashed var(--line);
   border-radius: 14px;
 }
@@ -212,11 +158,4 @@ button.stop:active:not(:disabled) { transform: scale(0.98); }
   max-height: 92vh;
   object-fit: contain;
   border-radius: 8px;
-}
-
-footer {
-  margin-top: 28px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.85rem;
 }

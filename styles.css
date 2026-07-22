@@ -67,6 +67,50 @@ h1 {
   font-weight: 700;
 }
 
+.range-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.range-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.range-row label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.range-row select {
+  appearance: none;
+  background: #1c1624;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.92rem;
+}
+.range-tilde {
+  color: var(--muted);
+  font-weight: 700;
+}
+.presets { margin-top: 10px; }
+.presets .chip {
+  padding: 7px 12px;
+  font-size: 0.85rem;
+}
+.range-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
@@ -142,6 +186,29 @@ button:disabled {
   border: 1px dashed var(--line);
   border-radius: 14px;
 }
+
+.more-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0 8px;
+}
+button.more {
+  font: inherit;
+  border: 1px solid #5c3a55;
+  background: #241828;
+  color: #ffd6e8;
+  border-radius: 999px;
+  padding: 14px 28px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 1rem;
+  min-width: min(320px, 92vw);
+}
+button.more:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+button.more[hidden] { display: none; }
 
 .lightbox {
   position: fixed;

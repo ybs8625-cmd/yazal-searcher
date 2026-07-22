@@ -12,12 +12,30 @@
   <div class="wrap">
     <header class="hero">
       <h1>야짤 간편 검색기</h1>
-      <p class="by">요청자 <strong>김범수씨~</strong> · <span id="ver">5.6</span></p>
+      <p class="by">요청자 <strong>김범수씨~</strong> · <span id="ver">6.0</span></p>
     </header>
 
     <section class="card">
       <h2>조회수 상위 기준</h2>
       <div id="periods" class="chips"></div>
+
+      <div id="rangeBox" class="range-box" hidden>
+        <div class="range-row">
+          <label>
+            시작
+            <select id="fromYear"></select>
+            <select id="fromMonth"></select>
+          </label>
+          <span class="range-tilde">~</span>
+          <label>
+            끝
+            <select id="toYear"></select>
+            <select id="toMonth"></select>
+          </label>
+        </div>
+        <div id="rangePresets" class="chips presets"></div>
+        <p id="rangeHint" class="range-hint"></p>
+      </div>
     </section>
 
     <div class="actions">
@@ -27,6 +45,9 @@
 
     <p id="status" class="status" aria-live="polite"></p>
     <section id="gallery" class="gallery" aria-label="사진"></section>
+    <div class="more-wrap">
+      <button id="moreBtn" class="more" type="button" hidden>더보기</button>
+    </div>
   </div>
 
   <div id="lightbox" class="lightbox" hidden>

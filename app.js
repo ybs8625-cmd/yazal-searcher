@@ -1,48 +1,206 @@
 (() => {
-  // pages: 목록을 더 읽어 기간 안 글을 확보 / take: 본문 파고들 글 수
+  var PAGE_SIZE = 50;
   var PERIODS = [
     { id: "day", ko: "일간", days: 1, pages: 4, take: 24 },
     { id: "week", ko: "주간", days: 7, pages: 8, take: 40 },
     { id: "month", ko: "월간", days: 30, pages: 14, take: 60 },
+    { id: "custom", ko: "기간선택", days: 0, pages: 0, take: 0 },
   ];
 
-  var selectedPeriod = "day";
+  var selectedPeriod = "week";
   var abortCtrl = null;
   var running = false;
 
+  // 전체 수집분 (조회수순) / 화면에 뿌린 장수
+  var allItems = [];
+  var seenImg = {};
+  var visibleCount = 0;
+
   var periodsEl = document.getElementById("periods");
+  var rangeBox = document.getElementById("rangeBox");
+  var rangeHint = document.getElementById("rangeHint");
+  var rangePresets = document.getElementById("rangePresets");
+  var fromYearEl = document.getElementById("fromYear");
+  var fromMonthEl = document.getElementById("fromMonth");
+  var toYearEl = document.getElementById("toYear");
+  var toMonthEl = document.getElementById("toMonth");
   var statusEl = document.getElementById("status");
   var galleryEl = document.getElementById("gallery");
+  var moreBtn = document.getElementById("moreBtn");
   var searchBtn = document.getElementById("searchBtn");
   var stopBtn = document.getElementById("stopBtn");
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
 
-  if (!searchBtn || !statusEl || !galleryEl || !periodsEl) {
+  if (!searchBtn || !statusEl || !galleryEl || !periodsEl || !moreBtn) {
     alert("페이지 로딩 오류. 새로고침 해줘.");
     return;
   }
+
+  var now = new Date();
+  var THIS_Y = now.getFullYear();
+  var THIS_M = now.getMonth() + 1;
+  var MIN_Y = 2020;
+
+  function fillSelect(el, from, to, selected, suffix) {
+    el.innerHTML = "";
+    for (var v = from; v <= to; v++) {
+      var opt = document.createElement("option");
+      opt.value = String(v);
+      opt.textContent = suffix ? v + suffix : String(v);
+      if (v === selected) opt.selected = true;
+      el.appendChild(opt);
+    }
+  }
+
+  fillSelect(fromYearEl, MIN_Y, THIS_Y, THIS_Y, "년");
+  fillSelect(toYearEl, MIN_Y, THIS_Y, THIS_Y, "년");
+  fillSelect(fromMonthEl, 1, 12, Math.max(1, THIS_M - 2), "월");
+  fillSelect(toMonthEl, 1, 12, THIS_M, "월");
+
+  function ymValue(yEl, mEl) {
+    return parseInt(yEl.value, 10) * 100 + parseInt(mEl.value, 10);
+  }
+
+  function syncRangeHint() {
+    var a = ymValue(fromYearEl, fromMonthEl);
+    var b = ymValue(toYearEl, toMonthEl);
+    if (a > b) {
+      rangeHint.textContent = "시작이 끝보다 늦어. 자동으로 바꿔서 검색해.";
+      return;
+    }
+    var months =
+      (parseInt(toYearEl.value, 10) - parseInt(fromYearEl.value, 10)) * 12 +
+      (parseInt(toMonthEl.value, 10) - parseInt(fromMonthEl.value, 10)) +
+      1;
+    rangeHint.textContent =
+      fromYearEl.value +
+      "." +
+      String(fromMonthEl.value).padStart(2, "0") +
+      " ~ " +
+      toYearEl.value +
+      "." +
+      String(toMonthEl.value).padStart(2, "0") +
+      " · " +
+      months +
+      "개월 · 조회수순 · 화면은 50장씩";
+  }
+
+  [fromYearEl, fromMonthEl, toYearEl, toMonthEl].forEach(function (el) {
+    el.addEventListener("change", syncRangeHint);
+  });
+
+  function setRange(fy, fm, ty, tm) {
+    fromYearEl.value = String(fy);
+    fromMonthEl.value = String(fm);
+    toYearEl.value = String(ty);
+    toMonthEl.value = String(tm);
+    syncRangeHint();
+  }
+
+  [
+    {
+      ko: "최근 3개월",
+      apply: function () {
+        var d = new Date(THIS_Y, THIS_M - 3, 1);
+        setRange(d.getFullYear(), d.getMonth() + 1, THIS_Y, THIS_M);
+      },
+    },
+    {
+      ko: "최근 6개월",
+      apply: function () {
+        var d = new Date(THIS_Y, THIS_M - 6, 1);
+        setRange(d.getFullYear(), d.getMonth() + 1, THIS_Y, THIS_M);
+      },
+    },
+    {
+      ko: "올해",
+      apply: function () {
+        setRange(THIS_Y, 1, THIS_Y, THIS_M);
+      },
+    },
+    {
+      ko: "작년",
+      apply: function () {
+        setRange(THIS_Y - 1, 1, THIS_Y - 1, 12);
+      },
+    },
+  ].forEach(function (p) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.textContent = p.ko;
+    btn.addEventListener("click", function () {
+      selectedPeriod = "custom";
+      updatePeriodUi();
+      p.apply();
+    });
+    rangePresets.appendChild(btn);
+  });
+
+  syncRangeHint();
 
   PERIODS.forEach(function (p) {
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "chip" + (p.id === selectedPeriod ? " on" : "");
+    btn.dataset.id = p.id;
     btn.textContent = p.ko;
     btn.addEventListener("click", function () {
       selectedPeriod = p.id;
-      periodsEl.querySelectorAll(".chip").forEach(function (b) {
-        b.classList.remove("on");
-      });
-      btn.classList.add("on");
+      updatePeriodUi();
     });
     periodsEl.appendChild(btn);
   });
 
-  function period() {
-    for (var i = 0; i < PERIODS.length; i++) {
-      if (PERIODS[i].id === selectedPeriod) return PERIODS[i];
+  function updatePeriodUi() {
+    periodsEl.querySelectorAll(".chip").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.id === selectedPeriod);
+    });
+    rangeBox.hidden = selectedPeriod !== "custom";
+  }
+  updatePeriodUi();
+
+  function getSearchPlan() {
+    if (selectedPeriod !== "custom") {
+      for (var i = 0; i < PERIODS.length; i++) {
+        if (PERIODS[i].id === selectedPeriod) {
+          var p = PERIODS[i];
+          return {
+            label: p.ko,
+            fromMs: Date.now() - p.days * 86400000,
+            toMs: Date.now() + 86400000,
+            pages: p.pages,
+            take: p.take,
+          };
+        }
+      }
     }
-    return PERIODS[0];
+
+    var fy = parseInt(fromYearEl.value, 10);
+    var fm = parseInt(fromMonthEl.value, 10);
+    var ty = parseInt(toYearEl.value, 10);
+    var tm = parseInt(toMonthEl.value, 10);
+    if (fy * 100 + fm > ty * 100 + tm) {
+      var swapY = fy;
+      var swapM = fm;
+      fy = ty;
+      fm = tm;
+      ty = swapY;
+      tm = swapM;
+      setRange(fy, fm, ty, tm);
+    }
+    var fromMs = new Date(fy, fm - 1, 1, 0, 0, 0).getTime();
+    var toMs = new Date(ty, tm, 0, 23, 59, 59).getTime();
+    var months = (ty - fy) * 12 + (tm - fm) + 1;
+    return {
+      label: fy + "." + String(fm).padStart(2, "0") + "~" + ty + "." + String(tm).padStart(2, "0"),
+      fromMs: fromMs,
+      toMs: toMs,
+      pages: Math.min(90, Math.max(12, months * 5)),
+      take: Math.min(220, Math.max(40, months * 12)),
+      months: months,
+    };
   }
 
   function setStatus(msg, kind) {
@@ -55,6 +213,7 @@
     searchBtn.disabled = on;
     stopBtn.disabled = !on;
     searchBtn.textContent = on ? "검색 중..." : "검색";
+    updateMoreBtn();
   }
 
   function throwIfAborted() {
@@ -163,35 +322,6 @@
     return out;
   }
 
-  function cutoffMs(p) {
-    return Date.now() - p.days * 24 * 60 * 60 * 1000;
-  }
-
-  /** 목록 날짜: "13:57"(오늘) / "07/21" / "07-21" */
-  function parseListDate(raw) {
-    var s = String(raw || "").trim();
-    var now = new Date();
-    var hm = /^(\d{1,2}):(\d{2})$/.exec(s);
-    if (hm) {
-      return new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        +hm[1],
-        +hm[2]
-      ).getTime();
-    }
-    var md = /^(\d{1,2})[\/\-](\d{1,2})$/.exec(s);
-    if (md) {
-      var d = new Date(now.getFullYear(), +md[1] - 1, +md[2], 12, 0, 0);
-      if (d.getTime() > now.getTime() + 36 * 3600000) {
-        d.setFullYear(d.getFullYear() - 1);
-      }
-      return d.getTime();
-    }
-    return now.getTime();
-  }
-
   function stripTags(html) {
     return String(html || "")
       .replace(/<[^>]+>/g, "")
@@ -199,32 +329,86 @@
       .trim();
   }
 
-  function parseBobPosts(html) {
+  /** 목록 날짜 → 후보 타임스탬프들 (년 없는 MM/DD는 범위 내 가능한 해 모두) */
+  function candidateTimes(raw, plan) {
+    var s = String(raw || "").trim();
+    var out = [];
+    var hm = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (hm) {
+      var today = new Date();
+      out.push(
+        new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate(),
+          +hm[1],
+          +hm[2]
+        ).getTime()
+      );
+      return out;
+    }
+    var ymd = /^(20\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/.exec(s);
+    if (ymd) {
+      out.push(new Date(+ymd[1], +ymd[2] - 1, +ymd[3], 12, 0, 0).getTime());
+      return out;
+    }
+    var yymd = /^(\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/.exec(s);
+    if (yymd) {
+      out.push(
+        new Date(2000 + +yymd[1], +yymd[2] - 1, +yymd[3], 12, 0, 0).getTime()
+      );
+      return out;
+    }
+    var md = /^(\d{1,2})[\/\-](\d{1,2})$/.exec(s);
+    if (md) {
+      var fromY = new Date(plan.fromMs).getFullYear();
+      var toY = new Date(plan.toMs).getFullYear();
+      for (var yy = fromY - 1; yy <= toY + 1; yy++) {
+        out.push(new Date(yy, +md[1] - 1, +md[2], 12, 0, 0).getTime());
+      }
+      return out;
+    }
+    out.push(Date.now());
+    return out;
+  }
+
+  function timeInPlan(raw, plan) {
+    var cands = candidateTimes(raw, plan);
+    for (var i = 0; i < cands.length; i++) {
+      if (cands[i] >= plan.fromMs && cands[i] <= plan.toMs) return cands[i];
+    }
+    return null;
+  }
+
+  function parseBobPosts(html, plan) {
     var posts = [];
     var re =
       /class="bsubject"[^>]*href="\/view\?code=nsfw&No=(\d+)[^"]*"[\s\S]*?class="date"[^>]*>([^<]+)<[\s\S]*?class="count"[^>]*>([\s\S]*?)<\/td>/gi;
     var m;
     while ((m = re.exec(html))) {
-      var views = parseInt(stripTags(m[3]).replace(/[^\d]/g, ""), 10) || 0;
+      var t = timeInPlan(m[2], plan);
+      if (t == null) continue;
       posts.push({
         id: m[1],
-        views: views,
-        time: parseListDate(m[2]),
+        views: parseInt(stripTags(m[3]).replace(/[^\d]/g, ""), 10) || 0,
+        time: t,
       });
     }
     return posts;
   }
 
-  function parseJjtvPosts(html) {
+  function parseJjtvPosts(html, plan) {
     var posts = [];
     var re =
       /td_subject[\s\S]*?<a href="https:\/\/jjtv\.kr\/15\/(\d+)"[\s\S]*?<\/td>\s*<td class="td_name[\s\S]*?<\/td>\s*<td class="td_num[^"]*">\s*([\d,]+)\s*<\/td>\s*<td class="td_num[^"]*">\s*[\d,]+\s*<\/td>\s*<td class="td_num[^"]*">\s*[\d,-]+\s*<\/td>\s*<td class="td_datetime[^"]*">\s*([^<]+)\s*<\/td>/gi;
     var m;
     while ((m = re.exec(html))) {
+      var t = timeInPlan(m[3], plan);
+      if (t == null) continue;
       posts.push({
         id: m[1],
         views: parseInt(String(m[2]).replace(/,/g, ""), 10) || 0,
-        time: parseListDate(m[3]),
+        time: t,
       });
     }
     return posts;
@@ -242,15 +426,14 @@
     }
 
     if (/방금/.test(text)) ageMs = 5 * 60000;
-    else if (/(\d+)\s*분/.test(text)) {
-      ageMs = parseInt(RegExp.$1, 10) * 60000;
-    } else if (/(\d+)\s*시간/.test(text)) {
-      ageMs = parseInt(RegExp.$1, 10) * 3600000;
-    } else if (/(\d+)\s*일/.test(text)) {
-      ageMs = parseInt(RegExp.$1, 10) * 86400000;
-    } else if (/오늘/.test(text)) {
-      ageMs = 12 * 3600000;
-    } else {
+    else if (/(\d+)\s*분/.test(text)) ageMs = parseInt(RegExp.$1, 10) * 60000;
+    else if (/(\d+)\s*시간/.test(text)) ageMs = parseInt(RegExp.$1, 10) * 3600000;
+    else if (/(\d+)\s*일/.test(text)) ageMs = parseInt(RegExp.$1, 10) * 86400000;
+    else if (/(\d+)\s*달|(\d+)\s*개월/.test(text)) {
+      var mm = text.match(/(\d+)\s*(?:달|개월)/);
+      ageMs = (mm ? parseInt(mm[1], 10) : 1) * 30 * 86400000;
+    } else if (/오늘/.test(text)) ageMs = 12 * 3600000;
+    else {
       var nums = text.match(/\d+/g);
       if (nums && nums.length >= 2) {
         if (!views) views = parseInt(nums[0], 10);
@@ -260,19 +443,35 @@
     return { views: views, time: Date.now() - ageMs };
   }
 
-  function parseGmPosts(html) {
+  function parseGmPosts(html, plan) {
     var posts = [];
     var re =
       /gid=(\d{6,})"[^>]*>[\s\S]*?class="day_news">([\s\S]*?)<\/div>/gi;
     var m;
     while ((m = re.exec(html))) {
       var meta = parseGmAge(m[2]);
+      if (meta.time < plan.fromMs || meta.time > plan.toMs) continue;
       var thumb = null;
-      var chunk = m[0];
       var tm = /https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\/[^"'\\\s<>)]+/i.exec(
-        chunk
+        m[0]
       );
       if (tm) thumb = normalizeUrl(tm[0].replace(/[.,;)]+$/, ""));
+      // CDN 경로 날짜도 보조 확인
+      if (thumb) {
+        var pathDate = /\/(20\d{2})\/(\d{2})\/(\d{2})\//.exec(thumb);
+        if (pathDate) {
+          var pt = new Date(
+            +pathDate[1],
+            +pathDate[2] - 1,
+            +pathDate[3],
+            12,
+            0,
+            0
+          ).getTime();
+          if (pt < plan.fromMs || pt > plan.toMs) continue;
+          meta.time = pt;
+        }
+      }
       posts.push({
         id: m[1],
         views: meta.views,
@@ -291,19 +490,12 @@
       if (!prev || p.views > prev.views) map[p.id] = p;
     }
     var out = [];
-    for (var k in map) if (Object.prototype.hasOwnProperty.call(map, k)) out.push(map[k]);
-    return out;
-  }
-
-  function filterAndRank(posts, p) {
-    var cut = cutoffMs(p);
-    var filtered = posts.filter(function (x) {
-      return x.time >= cut;
-    });
-    filtered.sort(function (a, b) {
+    for (var k in map)
+      if (Object.prototype.hasOwnProperty.call(map, k)) out.push(map[k]);
+    out.sort(function (a, b) {
       return b.views - a.views;
     });
-    return filtered;
+    return out;
   }
 
   var BOB_ALLOW = /^https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\//i;
@@ -315,32 +507,148 @@
   var JJ_ALLOW = /^https?:\/\/img\d*\.jjtv\.kr\//i;
   var JJ_ABS = /https?:\/\/img\d*\.jjtv\.kr\/[^\s"'<>)\\]+/gi;
 
-  async function scrapeBobae(p, addImgs) {
+  function updateMoreBtn() {
+    var left = allItems.length - visibleCount;
+    if (running || left <= 0) {
+      moreBtn.hidden = true;
+      return;
+    }
+    moreBtn.hidden = false;
+    moreBtn.textContent =
+      "더보기 · " + Math.min(PAGE_SIZE, left) + "장 (남은 " + left + "장)";
+  }
+
+  function renderVisible(force) {
+    var want = Math.min(visibleCount, allItems.length);
+    var current = galleryEl.querySelectorAll(".shot").length;
+    // 검색 중 정렬이 자주 바뀌면 상위 50만 다시 그림
+    if (force || current !== want || want <= PAGE_SIZE) {
+      galleryEl.innerHTML = "";
+      for (var i = 0; i < want; i++) {
+        (function (src) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "shot";
+          var img = document.createElement("img");
+          img.src = src;
+          img.alt = "";
+          img.loading = "lazy";
+          img.decoding = "async";
+          img.referrerPolicy = "no-referrer";
+          img.onerror = function () {
+            if (btn.parentNode) btn.parentNode.removeChild(btn);
+          };
+          btn.appendChild(img);
+          btn.onclick = function () {
+            lightboxImg.src = src;
+            lightbox.hidden = false;
+          };
+          galleryEl.appendChild(btn);
+        })(allItems[i].url);
+      }
+    } else {
+      // 더보기로만 늘어날 때: 뒤에만 추가
+      for (var j = current; j < want; j++) {
+        (function (src) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "shot";
+          var img = document.createElement("img");
+          img.src = src;
+          img.alt = "";
+          img.loading = "lazy";
+          img.decoding = "async";
+          img.referrerPolicy = "no-referrer";
+          img.onerror = function () {
+            if (btn.parentNode) btn.parentNode.removeChild(btn);
+          };
+          btn.appendChild(img);
+          btn.onclick = function () {
+            lightboxImg.src = src;
+            lightbox.hidden = false;
+          };
+          galleryEl.appendChild(btn);
+        })(allItems[j].url);
+      }
+    }
+    updateMoreBtn();
+  }
+
+  var paintTimer = null;
+  function schedulePaint(force) {
+    if (paintTimer) return;
+    paintTimer = setTimeout(function () {
+      paintTimer = null;
+      if (visibleCount < PAGE_SIZE && allItems.length) {
+        visibleCount = Math.min(PAGE_SIZE, allItems.length);
+      }
+      renderVisible(!!force);
+    }, 120);
+  }
+
+  function addImgs(arr, views) {
+    var v = views || 0;
+    var changed = false;
+    for (var i = 0; i < arr.length; i++) {
+      var u = arr[i];
+      if (!u) continue;
+      if (seenImg[u]) {
+        for (var j = 0; j < allItems.length; j++) {
+          if (allItems[j].url === u && v > allItems[j].views) {
+            allItems[j].views = v;
+            changed = true;
+          }
+        }
+        continue;
+      }
+      seenImg[u] = 1;
+      allItems.push({ url: u, views: v });
+      changed = true;
+    }
+    if (!changed) return;
+    allItems.sort(function (a, b) {
+      return b.views - a.views;
+    });
+    // 화면에는 최대 PAGE_SIZE만 유지(더보기 전)
+    if (visibleCount === 0 && allItems.length) {
+      visibleCount = Math.min(PAGE_SIZE, allItems.length);
+    } else if (visibleCount > 0 && visibleCount < PAGE_SIZE) {
+      visibleCount = Math.min(PAGE_SIZE, allItems.length);
+    }
+    schedulePaint(true);
+  }
+
+  async function scrapeBobae(plan) {
     var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
     var VIEW_M = "https://m.bobaedream.co.kr/board/bbs_view/nsfw/";
     var VIEW_D = "https://www.bobaedream.co.kr/view?code=nsfw&No=";
     var collected = [];
 
-    for (var page = 1; page <= p.pages; page++) {
+    for (var page = 1; page <= plan.pages; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + p.pages);
+      setStatus("목록 수집 중... " + page + "/" + plan.pages + " · 확보 " + allItems.length + "장");
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
-        collected = collected.concat(parseBobPosts(html));
+        collected = collected.concat(parseBobPosts(html, plan));
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
 
-    var ranked = filterAndRank(mergePosts(collected), p);
-    var take = Math.min(ranked.length, p.take);
-    setStatus("조회수순 정리 · " + take + "개");
-
+    var ranked = mergePosts(collected);
+    var take = Math.min(ranked.length, plan.take);
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = ranked[n];
       setStatus(
-        "사진 모으는 중... " + (n + 1) + "/" + take + " · 조회 " + post.views
+        "사진 모으는 중... " +
+          (n + 1) +
+          "/" +
+          take +
+          " · 화면 " +
+          visibleCount +
+          "/" +
+          allItems.length
       );
       var ok = false;
       try {
@@ -369,37 +677,40 @@
     }
   }
 
-  async function scrapeGamemeca(p, addImgs) {
+  async function scrapeGamemeca(plan) {
     var LIST = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
     var VIEW =
       "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery&gid=";
     var collected = [];
 
-    for (var page = 1; page <= p.pages; page++) {
+    for (var page = 1; page <= plan.pages; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + p.pages);
+      setStatus("목록 수집 중... " + page + "/" + plan.pages + " · 확보 " + allItems.length + "장");
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
-        collected = collected.concat(parseGmPosts(html));
+        collected = collected.concat(parseGmPosts(html, plan));
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
 
-    var ranked = filterAndRank(mergePosts(collected), p);
-    var take = Math.min(ranked.length, p.take);
-    setStatus("조회수순 정리 · " + take + "개");
-
-    // 목록 썸네일부터 조회수순으로 먼저 표시
+    var ranked = mergePosts(collected);
     for (var t = 0; t < ranked.length; t++) {
       if (ranked[t].thumb) addImgs([ranked[t].thumb], ranked[t].views);
     }
-
+    var take = Math.min(ranked.length, plan.take);
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = ranked[n];
       setStatus(
-        "사진 모으는 중... " + (n + 1) + "/" + take + " · 조회 " + post.views
+        "사진 모으는 중... " +
+          (n + 1) +
+          "/" +
+          take +
+          " · 화면 " +
+          visibleCount +
+          "/" +
+          allItems.length
       );
       try {
         addImgs(
@@ -412,31 +723,36 @@
     }
   }
 
-  async function scrapeJjtv(p, addImgs) {
+  async function scrapeJjtv(plan) {
     var LIST = "https://jjtv.kr/15";
     var VIEW = "https://jjtv.kr/15/";
     var collected = [];
 
-    for (var page = 1; page <= p.pages; page++) {
+    for (var page = 1; page <= plan.pages; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + p.pages);
+      setStatus("목록 수집 중... " + page + "/" + plan.pages + " · 확보 " + allItems.length + "장");
       try {
         var html = await fetchText(LIST + (page > 1 ? "?page=" + page : ""));
-        collected = collected.concat(parseJjtvPosts(html));
+        collected = collected.concat(parseJjtvPosts(html, plan));
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
 
-    var ranked = filterAndRank(mergePosts(collected), p);
-    var take = Math.min(ranked.length, p.take);
-    setStatus("조회수순 정리 · " + take + "개");
-
+    var ranked = mergePosts(collected);
+    var take = Math.min(ranked.length, plan.take);
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = ranked[n];
       setStatus(
-        "사진 모으는 중... " + (n + 1) + "/" + take + " · 조회 " + post.views
+        "사진 모으는 중... " +
+          (n + 1) +
+          "/" +
+          take +
+          " · 화면 " +
+          visibleCount +
+          "/" +
+          allItems.length
       );
       try {
         var imgs = extractByAllow(
@@ -444,38 +760,12 @@
           JJ_ALLOW,
           JJ_ABS
         ).filter(function (u) {
-          // 목록용 0000 썸네일 제외
           return !/_0000\.(jpe?g|png|gif|webp)(\?|$)/i.test(u);
         });
         addImgs(imgs, post.views);
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
-    }
-  }
-
-  function renderGallery(items) {
-    galleryEl.innerHTML = "";
-    for (var i = 0; i < items.length; i++) {
-      (function (src) {
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "shot";
-        var img = document.createElement("img");
-        img.src = src;
-        img.alt = "";
-        img.loading = "lazy";
-        img.referrerPolicy = "no-referrer";
-        img.onerror = function () {
-          if (btn.parentNode) btn.parentNode.removeChild(btn);
-        };
-        btn.appendChild(img);
-        btn.onclick = function () {
-          lightboxImg.src = src;
-          lightbox.hidden = false;
-        };
-        galleryEl.appendChild(btn);
-      })(items[i].url);
     }
   }
 
@@ -487,70 +777,75 @@
   stopBtn.onclick = function () {
     if (!running || !abortCtrl) return;
     abortCtrl.abort();
-    setStatus("중지됨", "ok");
+    setStatus(
+      "중지 · 확보 " + allItems.length + "장 · 화면 " + visibleCount + "장",
+      "ok"
+    );
     setRunning(false);
+    renderVisible(true);
+  };
+
+  moreBtn.onclick = function () {
+    if (!allItems.length) return;
+    var before = visibleCount;
+    visibleCount = Math.min(allItems.length, visibleCount + PAGE_SIZE);
+    if (visibleCount === before) {
+      updateMoreBtn();
+      return;
+    }
+    renderVisible(false);
+    setStatus(
+      "화면 " + visibleCount + " / 확보 " + allItems.length + "장",
+      "ok"
+    );
   };
 
   async function runSearch() {
-    var p = period();
-    setStatus(p.ko + " · 조회수순 검색 시작...", "");
+    var plan = getSearchPlan();
+    setStatus(plan.label + " · 조회수순 검색 시작...", "");
     setRunning(true);
+    allItems = [];
+    seenImg = {};
+    visibleCount = 0;
     galleryEl.innerHTML = "";
+    moreBtn.hidden = true;
     abortCtrl = new AbortController();
 
-    var items = [];
-    var seenImg = {};
-
-    function addImgs(arr, views) {
-      var v = views || 0;
-      var changed = false;
-      for (var i = 0; i < arr.length; i++) {
-        var u = arr[i];
-        if (!u) continue;
-        if (seenImg[u]) {
-          // 같은 이미지면 더 높은 조회수로 갱신
-          for (var j = 0; j < items.length; j++) {
-            if (items[j].url === u && v > items[j].views) {
-              items[j].views = v;
-              changed = true;
-            }
-          }
-          continue;
-        }
-        seenImg[u] = 1;
-        items.push({ url: u, views: v });
-        changed = true;
-      }
-      if (changed) {
-        items.sort(function (a, b) {
-          return b.views - a.views;
-        });
-        renderGallery(items);
-      }
-    }
-
     try {
-      await scrapeBobae(p, addImgs);
-      await scrapeGamemeca(p, addImgs);
-      await scrapeJjtv(p, addImgs);
+      await scrapeBobae(plan);
+      await scrapeGamemeca(plan);
+      await scrapeJjtv(plan);
 
       setRunning(false);
-      if (!items.length) {
+      if (!allItems.length) {
         setStatus("해당 기간 이미지를 못 모았어. 다시 검색 눌러봐.", "error");
+        moreBtn.hidden = true;
         return;
       }
+      if (visibleCount === 0) {
+        visibleCount = Math.min(PAGE_SIZE, allItems.length);
+      }
+      renderVisible(true);
       setStatus(
-        p.ko + " · 조회수순 · 사진 " + items.length + "장",
+        plan.label +
+          " · 조회수순 · 확보 " +
+          allItems.length +
+          "장 · 화면 " +
+          visibleCount +
+          "장",
         "ok"
       );
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
-        items.sort(function (a, b) {
-          return b.views - a.views;
-        });
-        renderGallery(items);
-        setStatus("중지 · " + items.length + "장", "ok");
+        if (visibleCount === 0 && allItems.length) {
+          visibleCount = Math.min(PAGE_SIZE, allItems.length);
+        }
+        renderVisible(true);
+        setStatus(
+          "중지 · 확보 " + allItems.length + "장 · 화면 " + visibleCount + "장",
+          "ok"
+        );
         return;
       }
       setStatus("오류: " + (e.message || e), "error");
@@ -565,4 +860,8 @@
     });
   });
 
+  setStatus(
+    "6.0 · 주간/월간/기간선택 · 화면은 50장씩 더보기. 검색 눌러봐.",
+    ""
+  );
 })();

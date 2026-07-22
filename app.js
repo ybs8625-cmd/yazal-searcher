@@ -31,6 +31,7 @@
   var stopBtn = document.getElementById("stopBtn");
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
+  var lightboxClose = document.getElementById("lightboxClose");
 
   if (!searchBtn || !statusEl || !galleryEl || !periodsEl || !moreBtn) {
     alert("페이지 로딩 오류. 새로고침 해줘.");
@@ -540,8 +541,7 @@
           };
           btn.appendChild(img);
           btn.onclick = function () {
-            lightboxImg.src = src;
-            lightbox.hidden = false;
+            openLightbox(src);
           };
           galleryEl.appendChild(btn);
         })(allItems[i].url);
@@ -564,8 +564,7 @@
           };
           btn.appendChild(img);
           btn.onclick = function () {
-            lightboxImg.src = src;
-            lightbox.hidden = false;
+            openLightbox(src);
           };
           galleryEl.appendChild(btn);
         })(allItems[j].url);
@@ -769,10 +768,30 @@
     }
   }
 
-  lightbox.onclick = function () {
+  function closeLightbox() {
     lightbox.hidden = true;
     lightboxImg.removeAttribute("src");
-  };
+  }
+
+  function openLightbox(src) {
+    lightboxImg.src = src;
+    lightbox.hidden = false;
+  }
+
+  lightboxClose.addEventListener("click", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeLightbox();
+  });
+
+  // 배경(어두운 영역) 누르면 닫기. 사진 자체는 스크롤/확대 제스처에 안 먹히게 분리
+  lightbox.addEventListener("click", function (e) {
+    if (e.target === lightbox) closeLightbox();
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !lightbox.hidden) closeLightbox();
+  });
 
   stopBtn.onclick = function () {
     if (!running || !abortCtrl) return;
@@ -861,7 +880,7 @@
   });
 
   setStatus(
-    "6.0 · 주간/월간/기간선택 · 화면은 50장씩 더보기. 검색 눌러봐.",
+    "6.1 · 주간/월간/기간선택 · 화면은 50장씩 더보기. 검색 눌러봐.",
     ""
   );
 })();

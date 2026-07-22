@@ -178,6 +178,7 @@
             toMs: Date.now() + 86400000,
             pages: p.pages,
             take: p.take,
+            adaptive: false,
           };
         }
       }
@@ -199,13 +200,30 @@
     var fromMs = new Date(fy, fm - 1, 1, 0, 0, 0).getTime();
     var toMs = new Date(ty, tm, 0, 23, 59, 59).getTime();
     var months = (ty - fy) * 12 + (tm - fm) + 1;
+    // 지금부터 기간 시작까지 몇 달 전인지 → 목록을 그만큼 더 깊게 읽어야 함
+    var monthsBack =
+      (THIS_Y - fy) * 12 + (THIS_M - fm);
+    if (monthsBack < 0) monthsBack = 0;
     return {
-      label: fy + "." + String(fm).padStart(2, "0") + "~" + ty + "." + String(tm).padStart(2, "0"),
+      label:
+        fy +
+        "." +
+        String(fm).padStart(2, "0") +
+        "~" +
+        ty +
+        "." +
+        String(tm).padStart(2, "0"),
       fromMs: fromMs,
       toMs: toMs,
-      pages: Math.min(90, Math.max(12, months * 5)),
+      // 예: 7월에 1월 검색 → 약 6개월 전 → 60페이지+ 수준
+      pages: Math.min(
+        MAX_PAGES,
+        Math.max(30, monthsBack * 10 + months * 5)
+      ),
       take: Math.min(220, Math.max(40, months * 12)),
       months: months,
+      monthsBack: monthsBack,
+      adaptive: true,
     };
   }
 
@@ -336,55 +354,76 @@
       .trim();
   }
 
-  /** 목록 날짜 → 후보 타임스탬프들 (년 없는 MM/DD는 범위 내 가능한 해 모두) */
-  function candidateTimes(raw, plan) {
+  /** 목록 날짜(년 없음) → 오늘 기준 과거로 해석 */
+  function parseForumDate(raw) {
     var s = String(raw || "").trim();
-    var out = [];
+    var now = new Date();
     var hm = /^(\d{1,2}):(\d{2})$/.exec(s);
     if (hm) {
-      var today = new Date();
-      out.push(
-        new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate(),
-          +hm[1],
-          +hm[2]
-        ).getTime()
-      );
-      return out;
+      return new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        +hm[1],
+        +hm[2]
+      ).getTime();
     }
     var ymd = /^(20\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/.exec(s);
     if (ymd) {
-      out.push(new Date(+ymd[1], +ymd[2] - 1, +ymd[3], 12, 0, 0).getTime());
-      return out;
+      return new Date(+ymd[1], +ymd[2] - 1, +ymd[3], 12, 0, 0).getTime();
     }
     var yymd = /^(\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/.exec(s);
     if (yymd) {
-      out.push(
-        new Date(2000 + +yymd[1], +yymd[2] - 1, +yymd[3], 12, 0, 0).getTime()
-      );
-      return out;
+      return new Date(
+        2000 + +yymd[1],
+        +yymd[2] - 1,
+        +yymd[3],
+        12,
+        0,
+        0
+      ).getTime();
     }
     var md = /^(\d{1,2})[\/\-](\d{1,2})$/.exec(s);
     if (md) {
-      var fromY = new Date(plan.fromMs).getFullYear();
-      var toY = new Date(plan.toMs).getFullYear();
-      for (var yy = fromY - 1; yy <= toY + 1; yy++) {
-        out.push(new Date(yy, +md[1] - 1, +md[2], 12, 0, 0).getTime());
+      var d = new Date(now.getFullYear(), +md[1] - 1, +md[2], 12, 0, 0);
+      if (d.getTime() > now.getTime() + 36 * 3600000) {
+        d.setFullYear(d.getFullYear() - 1);
       }
-      return out;
-    }
-    out.push(Date.now());
-    return out;
-  }
-
-  function timeInPlan(raw, plan) {
-    var cands = candidateTimes(raw, plan);
-    for (var i = 0; i < cands.length; i++) {
-      if (cands[i] >= plan.fromMs && cands[i] <= plan.toMs) return cands[i];
+      return d.getTime();
     }
     return null;
+  }
+
+  /** 기간 안이면 타임스탬프, 아니면 null */
+  function timeInPlan(raw, plan) {
+    var t = parseForumDate(raw);
+    if (t != null && t >= plan.fromMs && t <= plan.toMs) return t;
+
+    // 작년 등: MM/DD 를 기간 연도로도 시도
+    var s = String(raw || "").trim();
+    var md = /^(\d{1,2})[\/\-](\d{1,2})$/.exec(s);
+    if (!md) return null;
+    var fromY = new Date(plan.fromMs).getFullYear();
+    var toY = new Date(plan.toMs).getFullYear();
+    for (var yy = fromY; yy <= toY; yy++) {
+      var t2 = new Date(yy, +md[1] - 1, +md[2], 12, 0, 0).getTime();
+      if (t2 >= plan.fromMs && t2 <= plan.toMs) return t2;
+    }
+    return null;
+  }
+
+  function pagePassedRange(dateStrs, plan) {
+    if (!dateStrs || !dateStrs.length) return false;
+    var ok = 0;
+    var before = 0;
+    for (var i = 0; i < dateStrs.length; i++) {
+      var t = parseForumDate(dateStrs[i]);
+      if (t == null) continue;
+      ok++;
+      if (t < plan.fromMs) before++;
+    }
+    // 페이지 날짜의 대부분이 기간 시작보다 이전이면 더 이상 앞(과거)으로 갈 필요 없음
+    return ok >= 5 && before / ok >= 0.8;
   }
 
   function parseBobPosts(html, plan) {
@@ -646,17 +685,38 @@
   async function fetchBobLists(plan, fromPage, toPage) {
     var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
     var collected = [];
+    var lastPage = fromPage - 1;
+    var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + toPage + " · 확보 " + allItems.length + "장");
+      setStatus(
+        "목록 수집 중... " +
+          page +
+          "/" +
+          toPage +
+          " · 기간글 " +
+          collected.length +
+          " · 확보 " +
+          allItems.length +
+          "장"
+      );
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
         collected = collected.concat(parseBobPosts(html, plan));
+        lastPage = page;
+        var dateStrs = [];
+        var dre = /class="date"[^>]*>([^<]+)</gi;
+        var dm;
+        while ((dm = dre.exec(html))) dateStrs.push(dm[1]);
+        if (pagePassedRange(dateStrs, plan)) {
+          passed = true;
+          break;
+        }
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
-    return collected;
+    return { posts: collected, lastPage: lastPage, passed: passed };
   }
 
   async function digBobPosts(bucket, count) {
@@ -706,50 +766,95 @@
     return allItems.length - before;
   }
 
+  async function fillBobLists(plan, bucket, targetPages) {
+    var goal = Math.min(MAX_PAGES, targetPages || plan.pages);
+    while (bucket.pages < goal && !bucket.empty) {
+      var to = Math.min(goal, bucket.pages + (plan.adaptive ? 10 : goal - bucket.pages));
+      if (to <= bucket.pages) break;
+      var got = await fetchBobLists(plan, bucket.pages + 1, to);
+      mergeIntoBucket(bucket, got.posts);
+      bucket.pages = Math.max(bucket.pages, got.lastPage);
+      if (got.passed) {
+        bucket.empty = true;
+        break;
+      }
+      if (got.lastPage < to) break;
+      // 적응형: 기간 글이 아직 없고 목표 페이지면 더 깊게
+      if (
+        plan.adaptive &&
+        bucket.posts.length === 0 &&
+        bucket.pages >= plan.pages &&
+        bucket.pages < MAX_PAGES
+      ) {
+        goal = Math.min(MAX_PAGES, bucket.pages + 20);
+        continue;
+      }
+      if (!plan.adaptive) break;
+      if (bucket.posts.length >= plan.take) break;
+    }
+  }
+
   async function scrapeBobae(plan, bucket, firstTake) {
-    if (bucket.pages < plan.pages) {
-      var got = await fetchBobLists(plan, bucket.pages + 1, plan.pages);
-      mergeIntoBucket(bucket, got);
-      bucket.pages = plan.pages;
+    await fillBobLists(plan, bucket, plan.pages);
+    // 과거 기간인데 글이 없으면 더 깊게 추가 탐색
+    if (plan.adaptive && bucket.posts.length === 0 && !bucket.empty) {
+      await fillBobLists(plan, bucket, MAX_PAGES);
     }
     return digBobPosts(bucket, firstTake);
   }
 
   async function extendBobae(plan, bucket) {
-    var gained = 0;
     if (bucket.posts.length - bucket.dig < MORE_BATCH && !bucket.empty) {
-      if (bucket.pages >= MAX_PAGES) {
-        bucket.empty = true;
-      } else {
-        var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
-        var got = await fetchBobLists(plan, bucket.pages + 1, to);
+      var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
+      if (to <= bucket.pages) bucket.empty = true;
+      else {
         var beforeLen = bucket.posts.length;
-        mergeIntoBucket(bucket, got);
-        bucket.pages = to;
-        if (bucket.posts.length === beforeLen) bucket.empty = true;
+        var got = await fetchBobLists(plan, bucket.pages + 1, to);
+        mergeIntoBucket(bucket, got.posts);
+        bucket.pages = Math.max(bucket.pages, got.lastPage);
+        if (got.passed || bucket.posts.length === beforeLen) bucket.empty = true;
       }
     }
-    gained += await digBobPosts(bucket, MORE_BATCH);
-    if (bucket.dig >= bucket.posts.length && bucket.empty) {
-      /* no more */
-    }
-    return gained;
+    return digBobPosts(bucket, MORE_BATCH);
   }
 
   async function fetchGmLists(plan, fromPage, toPage) {
     var LIST = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
     var collected = [];
+    var lastPage = fromPage - 1;
+    var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + toPage + " · 확보 " + allItems.length + "장");
+      setStatus(
+        "목록 수집 중... " +
+          page +
+          "/" +
+          toPage +
+          " · 기간글 " +
+          collected.length +
+          " · 확보 " +
+          allItems.length +
+          "장"
+      );
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
         collected = collected.concat(parseGmPosts(html, plan));
+        lastPage = page;
+        var pathDates = [];
+        var pre = /cdn\.gamemeca\.com\/gmboard\/fam_gallery\/(20\d{2})\/(\d{2})\/(\d{2})\//gi;
+        var pm;
+        while ((pm = pre.exec(html))) {
+          pathDates.push(pm[1] + "-" + pm[2] + "-" + pm[3]);
+        }
+        if (pagePassedRange(pathDates, plan)) {
+          passed = true;
+          break;
+        }
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
-    return collected;
+    return { posts: collected, lastPage: lastPage, passed: passed };
   }
 
   async function digGmPosts(bucket, count, withThumbs) {
@@ -790,25 +895,51 @@
     return allItems.length - before;
   }
 
+  async function fillGmLists(plan, bucket, targetPages) {
+    var goal = Math.min(MAX_PAGES, targetPages || plan.pages);
+    while (bucket.pages < goal && !bucket.empty) {
+      var to = Math.min(goal, bucket.pages + (plan.adaptive ? 10 : goal - bucket.pages));
+      if (to <= bucket.pages) break;
+      var got = await fetchGmLists(plan, bucket.pages + 1, to);
+      mergeIntoBucket(bucket, got.posts);
+      bucket.pages = Math.max(bucket.pages, got.lastPage);
+      if (got.passed) {
+        bucket.empty = true;
+        break;
+      }
+      if (got.lastPage < to) break;
+      if (
+        plan.adaptive &&
+        bucket.posts.length === 0 &&
+        bucket.pages >= plan.pages &&
+        bucket.pages < MAX_PAGES
+      ) {
+        goal = Math.min(MAX_PAGES, bucket.pages + 20);
+        continue;
+      }
+      if (!plan.adaptive) break;
+      if (bucket.posts.length >= plan.take) break;
+    }
+  }
+
   async function scrapeGamemeca(plan, bucket, firstTake) {
-    if (bucket.pages < plan.pages) {
-      var got = await fetchGmLists(plan, bucket.pages + 1, plan.pages);
-      mergeIntoBucket(bucket, got);
-      bucket.pages = plan.pages;
+    await fillGmLists(plan, bucket, plan.pages);
+    if (plan.adaptive && bucket.posts.length === 0 && !bucket.empty) {
+      await fillGmLists(plan, bucket, MAX_PAGES);
     }
     return digGmPosts(bucket, firstTake, true);
   }
 
   async function extendGamemeca(plan, bucket) {
     if (bucket.posts.length - bucket.dig < MORE_BATCH && !bucket.empty) {
-      if (bucket.pages >= MAX_PAGES) bucket.empty = true;
+      var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
+      if (to <= bucket.pages) bucket.empty = true;
       else {
-        var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
-        var got = await fetchGmLists(plan, bucket.pages + 1, to);
         var beforeLen = bucket.posts.length;
-        mergeIntoBucket(bucket, got);
-        bucket.pages = to;
-        if (bucket.posts.length === beforeLen) bucket.empty = true;
+        var got = await fetchGmLists(plan, bucket.pages + 1, to);
+        mergeIntoBucket(bucket, got.posts);
+        bucket.pages = Math.max(bucket.pages, got.lastPage);
+        if (got.passed || bucket.posts.length === beforeLen) bucket.empty = true;
       }
     }
     return digGmPosts(bucket, MORE_BATCH, true);
@@ -817,17 +948,38 @@
   async function fetchJjLists(plan, fromPage, toPage) {
     var LIST = "https://jjtv.kr/15";
     var collected = [];
+    var lastPage = fromPage - 1;
+    var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus("목록 수집 중... " + page + "/" + toPage + " · 확보 " + allItems.length + "장");
+      setStatus(
+        "목록 수집 중... " +
+          page +
+          "/" +
+          toPage +
+          " · 기간글 " +
+          collected.length +
+          " · 확보 " +
+          allItems.length +
+          "장"
+      );
       try {
         var html = await fetchText(LIST + (page > 1 ? "?page=" + page : ""));
         collected = collected.concat(parseJjtvPosts(html, plan));
+        lastPage = page;
+        var dateStrs = [];
+        var dre = /class="td_datetime"[^>]*>([^<]+)</gi;
+        var dm;
+        while ((dm = dre.exec(html))) dateStrs.push(dm[1]);
+        if (pagePassedRange(dateStrs, plan)) {
+          passed = true;
+          break;
+        }
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
-    return collected;
+    return { posts: collected, lastPage: lastPage, passed: passed };
   }
 
   async function digJjPosts(bucket, count) {
@@ -864,25 +1016,51 @@
     return allItems.length - before;
   }
 
+  async function fillJjLists(plan, bucket, targetPages) {
+    var goal = Math.min(MAX_PAGES, targetPages || plan.pages);
+    while (bucket.pages < goal && !bucket.empty) {
+      var to = Math.min(goal, bucket.pages + (plan.adaptive ? 10 : goal - bucket.pages));
+      if (to <= bucket.pages) break;
+      var got = await fetchJjLists(plan, bucket.pages + 1, to);
+      mergeIntoBucket(bucket, got.posts);
+      bucket.pages = Math.max(bucket.pages, got.lastPage);
+      if (got.passed) {
+        bucket.empty = true;
+        break;
+      }
+      if (got.lastPage < to) break;
+      if (
+        plan.adaptive &&
+        bucket.posts.length === 0 &&
+        bucket.pages >= plan.pages &&
+        bucket.pages < MAX_PAGES
+      ) {
+        goal = Math.min(MAX_PAGES, bucket.pages + 20);
+        continue;
+      }
+      if (!plan.adaptive) break;
+      if (bucket.posts.length >= plan.take) break;
+    }
+  }
+
   async function scrapeJjtv(plan, bucket, firstTake) {
-    if (bucket.pages < plan.pages) {
-      var got = await fetchJjLists(plan, bucket.pages + 1, plan.pages);
-      mergeIntoBucket(bucket, got);
-      bucket.pages = plan.pages;
+    await fillJjLists(plan, bucket, plan.pages);
+    if (plan.adaptive && bucket.posts.length === 0 && !bucket.empty) {
+      await fillJjLists(plan, bucket, MAX_PAGES);
     }
     return digJjPosts(bucket, firstTake);
   }
 
   async function extendJjtv(plan, bucket) {
     if (bucket.posts.length - bucket.dig < MORE_BATCH && !bucket.empty) {
-      if (bucket.pages >= MAX_PAGES) bucket.empty = true;
+      var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
+      if (to <= bucket.pages) bucket.empty = true;
       else {
-        var to = Math.min(MAX_PAGES, bucket.pages + MORE_PAGES);
-        var got = await fetchJjLists(plan, bucket.pages + 1, to);
         var beforeLen = bucket.posts.length;
-        mergeIntoBucket(bucket, got);
-        bucket.pages = to;
-        if (bucket.posts.length === beforeLen) bucket.empty = true;
+        var got = await fetchJjLists(plan, bucket.pages + 1, to);
+        mergeIntoBucket(bucket, got.posts);
+        bucket.pages = Math.max(bucket.pages, got.lastPage);
+        if (got.passed || bucket.posts.length === beforeLen) bucket.empty = true;
       }
     }
     return digJjPosts(bucket, MORE_BATCH);

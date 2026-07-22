@@ -178,7 +178,7 @@ button:disabled {
   object-fit: cover;
 }
 .gallery:empty::after {
-  content: "v5.3  일/주/월 간 검색 업데이트\A v6.0  과거 자료 검색을 위한 기간 설정 업데이트\A v6.1  50장씩 더보기 기능 업데이트(사진 닫기 버그 fix)\A v6.2  확보분 다 보면 추가검색으로 이어서 수집\A v6.3  사진은 확보 순서대로 아래에 이어붙이기";
+  content: "v5.3  일/주/월 간 검색 업데이트\A v6.0  과거 자료 검색을 위한 기간 설정 업데이트\A v6.1  50장씩 더보기 기능 업데이트(사진 닫기 버그 fix)\A v6.2  확보분 다 보면 추가검색으로 이어서 수집\A v6.3  사진은 확보 순서대로 아래에 이어붙이기\A v6.4  과거 기간검색 목록 깊이 보정";
   white-space: pre-line;
   grid-column: 1 / -1;
   text-align: left;

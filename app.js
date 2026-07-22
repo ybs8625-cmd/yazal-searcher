@@ -201,7 +201,7 @@
 
     for (var page = 1; page <= p.pages; page++) {
       throwIfAborted();
-      setStatus("보배드림 목록 " + page + "/" + p.pages);
+      setStatus("수집 중... " + page + "/" + p.pages);
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
         bobPostNos(html).forEach(function (no) {
@@ -218,7 +218,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var no = nos[n];
-      setStatus("보배드림 본문 " + (n + 1) + "/" + take);
+      setStatus("사진 모으는 중... " + (n + 1) + "/" + take);
       var ok = false;
       try {
         var imgs = extractByAllow(await fetchText(VIEW_M + no), BOB_ALLOW, BOB_ABS);
@@ -281,7 +281,7 @@
 
     for (var page = 1; page <= p.pages; page++) {
       throwIfAborted();
-      setStatus("게임메카 목록 " + page + "/" + p.pages);
+      setStatus("수집 중... " + page + "/" + p.pages);
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
         // 목록 썸네일도 바로 반영
@@ -300,7 +300,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var gid = gids[n];
-      setStatus("게임메카 본문 " + (n + 1) + "/" + take);
+      setStatus("사진 모으는 중... " + (n + 1) + "/" + take);
       try {
         addImgs(extractByAllow(await fetchText(VIEW + gid), GM_ALLOW, GM_ABS));
       } catch (e) {
@@ -374,10 +374,7 @@
         setStatus("이미지를 못 모았어. 다시 검색 눌러봐.", "error");
         return;
       }
-      setStatus(
-        "보배드림 + 게임메카 · 사진 " + images.length + "장",
-        "ok"
-      );
+      setStatus("완료 · 사진 " + images.length + "장", "ok");
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
@@ -397,5 +394,5 @@
     });
   });
 
-  setStatus("5.2 · 보배드림 NSFW + 게임메카 갤러리. 검색 눌러봐.", "");
+  setStatus("5.3 · 검색 눌러봐.", "");
 })();

@@ -14,11 +14,13 @@
   var abortCtrl = null;
   var running = false;
 
-  // 전체 수집분 (조회수순) / 화면에 뿌린 장수
+  // 전체 수집분 (조회수순 수집) / 화면에 뿌린 장수(필터 적용 후)
   var allItems = [];
   var seenImg = {};
   var visibleCount = 0;
   var session = null; // 추가검색용 세션
+  var showGif = true;
+  var showPhoto = true;
 
   var periodsEl = document.getElementById("periods");
   var rangeBox = document.getElementById("rangeBox");
@@ -36,11 +38,62 @@
   var lightbox = document.getElementById("lightbox");
   var lightboxImg = document.getElementById("lightboxImg");
   var lightboxClose = document.getElementById("lightboxClose");
+  var filterGifBtn = document.getElementById("filterGif");
+  var filterPhotoBtn = document.getElementById("filterPhoto");
 
-  if (!searchBtn || !statusEl || !galleryEl || !periodsEl || !moreBtn || !moreSearchBtn) {
+  if (
+    !searchBtn ||
+    !statusEl ||
+    !galleryEl ||
+    !periodsEl ||
+    !moreBtn ||
+    !moreSearchBtn ||
+    !filterGifBtn ||
+    !filterPhotoBtn
+  ) {
     alert("페이지 로딩 오류. 새로고침 해줘.");
     return;
   }
+
+  function isGifUrl(u) {
+    return /\.gif(\?|$)/i.test(String(u).split("#")[0]);
+  }
+
+  function filteredItems() {
+    var out = [];
+    for (var i = 0; i < allItems.length; i++) {
+      var it = allItems[i];
+      var gif = isGifUrl(it.url);
+      if (gif && showGif) out.push(it);
+      else if (!gif && showPhoto) out.push(it);
+    }
+    return out;
+  }
+
+  function syncTypeFilterUi() {
+    filterGifBtn.classList.toggle("on", showGif);
+    filterGifBtn.classList.toggle("filter-off", !showGif);
+    filterPhotoBtn.classList.toggle("on", showPhoto);
+    filterPhotoBtn.classList.toggle("filter-off", !showPhoto);
+  }
+
+  filterGifBtn.addEventListener("click", function () {
+    showGif = !showGif;
+    if (!showGif && !showPhoto) showPhoto = true;
+    syncTypeFilterUi();
+    visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
+    renderVisible(true);
+  });
+
+  filterPhotoBtn.addEventListener("click", function () {
+    showPhoto = !showPhoto;
+    if (!showGif && !showPhoto) showGif = true;
+    syncTypeFilterUi();
+    visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
+    renderVisible(true);
+  });
+
+  syncTypeFilterUi();
 
   var now = new Date();
   var THIS_Y = now.getFullYear();
@@ -538,7 +591,8 @@
   var JJ_ABS = /https?:\/\/img\d*\.jjtv\.kr\/[^\s"'<>)\\]+/gi;
 
   function updateFooterBtns() {
-    var left = allItems.length - visibleCount;
+    var list = filteredItems();
+    var left = list.length - visibleCount;
     if (running) {
       moreBtn.hidden = true;
       moreSearchBtn.hidden = true;
@@ -561,7 +615,8 @@
   }
 
   function renderVisible(force) {
-    var want = Math.min(visibleCount, allItems.length);
+    var list = filteredItems();
+    var want = Math.min(visibleCount, list.length);
     var current = galleryEl.querySelectorAll(".shot").length;
     if (force || current > want) {
       galleryEl.innerHTML = "";
@@ -586,7 +641,7 @@
           openLightbox(src);
         };
         galleryEl.appendChild(btn);
-      })(allItems[i].url);
+      })(list[i].url);
     }
     updateFooterBtns();
   }
@@ -600,8 +655,9 @@
       paintTimer = null;
       var f = paintForce;
       paintForce = false;
-      if (visibleCount < PAGE_SIZE && allItems.length) {
-        visibleCount = Math.min(PAGE_SIZE, allItems.length);
+      var list = filteredItems();
+      if (visibleCount < PAGE_SIZE && list.length) {
+        visibleCount = Math.min(PAGE_SIZE, list.length);
       }
       renderVisible(f);
     }, 120);
@@ -615,7 +671,6 @@
       var u = arr[i];
       if (!u) continue;
       if (seenImg[u]) {
-        // 이미 확보한 사진은 자리 유지 (중간에 끼어들지 않음)
         for (var j = 0; j < allItems.length; j++) {
           if (allItems[j].url === u && v > allItems[j].views) {
             allItems[j].views = v;
@@ -630,12 +685,12 @@
     }
     if (!changed) return 0;
 
-    // 화면은 확보 순서대로 아래로만 붙임 (조회수 재정렬로 중간 삽입 안 함)
-    if (visibleCount === 0 && allItems.length) {
-      visibleCount = Math.min(PAGE_SIZE, allItems.length);
+    var list = filteredItems();
+    if (visibleCount === 0 && list.length) {
+      visibleCount = Math.min(PAGE_SIZE, list.length);
       schedulePaint(true);
-    } else if (visibleCount < PAGE_SIZE && allItems.length > visibleCount) {
-      visibleCount = Math.min(PAGE_SIZE, allItems.length);
+    } else if (visibleCount < PAGE_SIZE && list.length > visibleCount) {
+      visibleCount = Math.min(PAGE_SIZE, list.length);
       schedulePaint(false);
     } else {
       updateFooterBtns();
@@ -1104,16 +1159,17 @@
   };
 
   moreBtn.onclick = function () {
-    if (!allItems.length) return;
+    var list = filteredItems();
+    if (!list.length) return;
     var before = visibleCount;
-    visibleCount = Math.min(allItems.length, visibleCount + PAGE_SIZE);
+    visibleCount = Math.min(list.length, visibleCount + PAGE_SIZE);
     if (visibleCount === before) {
       updateFooterBtns();
       return;
     }
     renderVisible(false);
     setStatus(
-      "화면 " + visibleCount + " / 확보 " + allItems.length + "장",
+      "화면 " + visibleCount + " / 필터 " + list.length + "장 (확보 " + allItems.length + ")",
       "ok"
     );
   };
@@ -1159,12 +1215,12 @@
         return;
       }
       if (visibleCount === 0) {
-        visibleCount = Math.min(PAGE_SIZE, allItems.length);
+        visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
       }
       renderVisible(true);
       setStatus(
         plan.label +
-          " · 조회수순 · 확보 " +
+          " · 확보 " +
           allItems.length +
           "장 · 화면 " +
           visibleCount +
@@ -1176,7 +1232,7 @@
       refreshSessionDone();
       if (e.name === "AbortError" || e.message === "STOPPED") {
         if (visibleCount === 0 && allItems.length) {
-          visibleCount = Math.min(PAGE_SIZE, allItems.length);
+          visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
         }
         renderVisible(true);
         setStatus(

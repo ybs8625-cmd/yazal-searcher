@@ -33,7 +33,7 @@
   var galleryEl = document.getElementById("gallery");
   var moreBtn = document.getElementById("moreBtn");
   var moreSearchBtn = document.getElementById("moreSearchBtn");
-  var searchingBtn = document.getElementById("searchingBtn");
+  var searchProgress = document.getElementById("searchProgress");
   var searchBtn = document.getElementById("searchBtn");
   var stopBtn = document.getElementById("stopBtn");
   var lightbox = document.getElementById("lightbox");
@@ -49,7 +49,7 @@
     !periodsEl ||
     !moreBtn ||
     !moreSearchBtn ||
-    !searchingBtn ||
+    !searchProgress ||
     !filterGifBtn ||
     !filterPhotoBtn
   ) {
@@ -643,18 +643,26 @@
     return Math.ceil(visibleCount / PAGE_SIZE) * PAGE_SIZE;
   }
 
+  /** 화면 하단 고정: 표출 장수 / 이번 구간 목표(30) */
+  function updateSearchProgress() {
+    if (!running) {
+      searchProgress.hidden = true;
+      return;
+    }
+    var list = filteredItems();
+    var shown = Math.min(visibleCount, list.length);
+    var cap = batchCap();
+    searchProgress.hidden = false;
+    searchProgress.textContent = "검색중(" + shown + "/" + cap + ")";
+  }
+
   function updateFooterBtns() {
     var list = filteredItems();
     var shown = Math.min(visibleCount, list.length);
     var cap = batchCap();
     var left = list.length - visibleCount;
 
-    if (running) {
-      searchingBtn.hidden = false;
-      searchingBtn.textContent = "검색중(" + shown + "/" + cap + ")";
-    } else {
-      searchingBtn.hidden = true;
-    }
+    updateSearchProgress();
 
     // 현재 구간이 찼고 더 볼 게 있으면 더보기
     if (left > 0 && shown >= cap) {
@@ -767,6 +775,7 @@
     // 이미 한 화면(30장) 이상 보고 있으면 자동으로 화면을 늘리지 않음 → 더보기로만 이어보기
     if (visibleCount === 0 && list.length) {
       visibleCount = Math.min(PAGE_SIZE, list.length);
+      updateSearchProgress();
       schedulePaint(true);
     } else if (
       visibleCount > 0 &&
@@ -774,11 +783,13 @@
       list.length > visibleCount
     ) {
       visibleCount = Math.min(PAGE_SIZE, list.length);
+      updateSearchProgress();
       schedulePaint(false);
     } else {
       updateFooterBtns();
     }
     if (running) refreshStatus();
+    else updateFooterBtns();
     return added;
   }
 
@@ -1220,8 +1231,8 @@
     galleryEl.innerHTML = "";
     moreBtn.hidden = true;
     moreSearchBtn.hidden = true;
-    searchingBtn.hidden = false;
-    searchingBtn.textContent = "검색중(0/" + PAGE_SIZE + ")";
+    searchProgress.hidden = false;
+    searchProgress.textContent = "검색중(0/" + PAGE_SIZE + ")";
     abortCtrl = new AbortController();
     refreshStatus(plan.label + " 검색 시작");
 

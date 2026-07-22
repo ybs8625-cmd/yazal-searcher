@@ -1,8 +1,9 @@
 (() => {
+  // pages: 목록을 더 읽어 기간 안 글을 확보 / take: 본문 파고들 글 수
   var PERIODS = [
-    { id: "day", ko: "일간", pages: 2, take: 16 },
-    { id: "week", ko: "주간", pages: 5, take: 30 },
-    { id: "month", ko: "월간", pages: 10, take: 50 },
+    { id: "day", ko: "일간", days: 1, pages: 4, take: 24 },
+    { id: "week", ko: "주간", days: 7, pages: 8, take: 40 },
+    { id: "month", ko: "월간", days: 30, pages: 14, take: 60 },
   ];
 
   var selectedPeriod = "day";
@@ -162,68 +163,177 @@
     return out;
   }
 
-  // —— 보배드림 NSFW ——
+  function cutoffMs(p) {
+    return Date.now() - p.days * 24 * 60 * 60 * 1000;
+  }
+
+  /** 보배드림 날짜: "13:57"(오늘) / "07/21"(월/일) */
+  function parseBobDate(raw) {
+    var s = String(raw || "").trim();
+    var now = new Date();
+    var hm = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (hm) {
+      return new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        +hm[1],
+        +hm[2]
+      ).getTime();
+    }
+    var md = /^(\d{1,2})\/(\d{1,2})$/.exec(s);
+    if (md) {
+      var d = new Date(now.getFullYear(), +md[1] - 1, +md[2], 12, 0, 0);
+      if (d.getTime() > now.getTime() + 36 * 3600000) {
+        d.setFullYear(d.getFullYear() - 1);
+      }
+      return d.getTime();
+    }
+    return now.getTime();
+  }
+
+  function stripTags(html) {
+    return String(html || "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .trim();
+  }
+
+  function parseBobPosts(html) {
+    var posts = [];
+    var re =
+      /class="bsubject"[^>]*href="\/view\?code=nsfw&No=(\d+)[^"]*"[\s\S]*?class="date"[^>]*>([^<]+)<[\s\S]*?class="count"[^>]*>([\s\S]*?)<\/td>/gi;
+    var m;
+    while ((m = re.exec(html))) {
+      var views = parseInt(stripTags(m[3]).replace(/[^\d]/g, ""), 10) || 0;
+      posts.push({
+        id: m[1],
+        views: views,
+        time: parseBobDate(m[2]),
+      });
+    }
+    return posts;
+  }
+
+  function parseGmAge(meta) {
+    var text = stripTags(meta);
+    var views = 0;
+    var ageMs = 6 * 3600000;
+    var vm = text.match(/조회\s*수?\s*(\d+)/);
+    if (vm) views = parseInt(vm[1], 10);
+    else {
+      var n0 = text.match(/(\d+)/);
+      if (n0) views = parseInt(n0[1], 10);
+    }
+
+    if (/방금/.test(text)) ageMs = 5 * 60000;
+    else if (/(\d+)\s*분/.test(text)) {
+      ageMs = parseInt(RegExp.$1, 10) * 60000;
+    } else if (/(\d+)\s*시간/.test(text)) {
+      ageMs = parseInt(RegExp.$1, 10) * 3600000;
+    } else if (/(\d+)\s*일/.test(text)) {
+      ageMs = parseInt(RegExp.$1, 10) * 86400000;
+    } else if (/오늘/.test(text)) {
+      ageMs = 12 * 3600000;
+    } else {
+      var nums = text.match(/\d+/g);
+      if (nums && nums.length >= 2) {
+        if (!views) views = parseInt(nums[0], 10);
+        ageMs = parseInt(nums[1], 10) * 86400000;
+      }
+    }
+    return { views: views, time: Date.now() - ageMs };
+  }
+
+  function parseGmPosts(html) {
+    var posts = [];
+    var re =
+      /gid=(\d{6,})"[^>]*>[\s\S]*?class="day_news">([\s\S]*?)<\/div>/gi;
+    var m;
+    while ((m = re.exec(html))) {
+      var meta = parseGmAge(m[2]);
+      var thumb = null;
+      var chunk = m[0];
+      var tm = /https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\/[^"'\\\s<>)]+/i.exec(
+        chunk
+      );
+      if (tm) thumb = normalizeUrl(tm[0].replace(/[.,;)]+$/, ""));
+      posts.push({
+        id: m[1],
+        views: meta.views,
+        time: meta.time,
+        thumb: thumb,
+      });
+    }
+    return posts;
+  }
+
+  function mergePosts(list) {
+    var map = {};
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      var prev = map[p.id];
+      if (!prev || p.views > prev.views) map[p.id] = p;
+    }
+    var out = [];
+    for (var k in map) if (Object.prototype.hasOwnProperty.call(map, k)) out.push(map[k]);
+    return out;
+  }
+
+  function filterAndRank(posts, p) {
+    var cut = cutoffMs(p);
+    var filtered = posts.filter(function (x) {
+      return x.time >= cut;
+    });
+    filtered.sort(function (a, b) {
+      return b.views - a.views;
+    });
+    return filtered;
+  }
+
   var BOB_ALLOW = /^https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\//i;
   var BOB_ABS =
     /https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\/[^\s"'<>)\\]+/gi;
-
-  function bobPostNos(html) {
-    var nos = [];
-    var seen = {};
-    var re = /(?:code=nsfw&No=|bbs_view\/nsfw\/|No=)(\d{3,})/gi;
-    var m;
-    while ((m = re.exec(html))) {
-      var no = m[1];
-      if (seen[no] || parseInt(no, 10) < 1000) continue;
-      seen[no] = 1;
-      nos.push(no);
-    }
-    return nos;
-  }
+  var GM_ALLOW = /^https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\//i;
+  var GM_ABS =
+    /https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\/[^\s"'<>)\\]+/gi;
 
   async function scrapeBobae(p, addImgs) {
     var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
-    var LIST_M = "https://m.bobaedream.co.kr/board/new_writing/nsfw";
     var VIEW_M = "https://m.bobaedream.co.kr/board/bbs_view/nsfw/";
     var VIEW_D = "https://www.bobaedream.co.kr/view?code=nsfw&No=";
-    var nos = [];
-    var seen = {};
-
-    try {
-      bobPostNos(await fetchText(LIST_M)).forEach(function (no) {
-        if (seen[no]) return;
-        seen[no] = 1;
-        nos.push(no);
-      });
-    } catch (e) {
-      if (e.name === "AbortError") throw e;
-    }
+    var collected = [];
 
     for (var page = 1; page <= p.pages; page++) {
       throwIfAborted();
-      setStatus("수집 중... " + page + "/" + p.pages);
+      setStatus("목록 수집 중... " + page + "/" + p.pages);
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
-        bobPostNos(html).forEach(function (no) {
-          if (seen[no]) return;
-          seen[no] = 1;
-          nos.push(no);
-        });
+        collected = collected.concat(parseBobPosts(html));
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
 
-    var take = Math.min(nos.length, p.take);
+    var ranked = filterAndRank(mergePosts(collected), p);
+    var take = Math.min(ranked.length, p.take);
+    setStatus("조회수순 정리 · " + take + "개");
+
     for (var n = 0; n < take; n++) {
       throwIfAborted();
-      var no = nos[n];
-      setStatus("사진 모으는 중... " + (n + 1) + "/" + take);
+      var post = ranked[n];
+      setStatus(
+        "사진 모으는 중... " + (n + 1) + "/" + take + " · 조회 " + post.views
+      );
       var ok = false;
       try {
-        var imgs = extractByAllow(await fetchText(VIEW_M + no), BOB_ALLOW, BOB_ABS);
+        var imgs = extractByAllow(
+          await fetchText(VIEW_M + post.id),
+          BOB_ALLOW,
+          BOB_ABS
+        );
         if (imgs.length) {
-          addImgs(imgs);
+          addImgs(imgs, post.views);
           ok = true;
         }
       } catch (e) {
@@ -232,7 +342,8 @@
       if (!ok) {
         try {
           addImgs(
-            extractByAllow(await fetchText(VIEW_D + no), BOB_ALLOW, BOB_ABS)
+            extractByAllow(await fetchText(VIEW_D + post.id), BOB_ALLOW, BOB_ABS),
+            post.views
           );
         } catch (e) {
           if (e.name === "AbortError") throw e;
@@ -241,77 +352,52 @@
     }
   }
 
-  // —— 게임메카 fam_gallery ——
-  var GM_ALLOW = /^https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\//i;
-  var GM_ABS =
-    /https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\/[^\s"'<>)\\]+/gi;
-
-  function gmGids(html) {
-    var ids = [];
-    var seen = {};
-    var re = /(?:[?&]gid=|gid=)(\d{4,})/gi;
-    var m;
-    while ((m = re.exec(html))) {
-      var id = m[1];
-      if (seen[id]) continue;
-      seen[id] = 1;
-      ids.push(id);
-    }
-    return ids;
-  }
-
   async function scrapeGamemeca(p, addImgs) {
     var LIST = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
-    var LIST_M = "https://m.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
-    var VIEW = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery&gid=";
-    var gids = [];
-    var seen = {};
-
-    try {
-      var mob = await fetchText(LIST_M);
-      addImgs(extractByAllow(mob, GM_ALLOW, GM_ABS));
-      gmGids(mob).forEach(function (id) {
-        if (seen[id]) return;
-        seen[id] = 1;
-        gids.push(id);
-      });
-    } catch (e) {
-      if (e.name === "AbortError") throw e;
-    }
+    var VIEW =
+      "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery&gid=";
+    var collected = [];
 
     for (var page = 1; page <= p.pages; page++) {
       throwIfAborted();
-      setStatus("수집 중... " + page + "/" + p.pages);
+      setStatus("목록 수집 중... " + page + "/" + p.pages);
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
-        // 목록 썸네일도 바로 반영
-        addImgs(extractByAllow(html, GM_ALLOW, GM_ABS));
-        gmGids(html).forEach(function (id) {
-          if (seen[id]) return;
-          seen[id] = 1;
-          gids.push(id);
-        });
+        collected = collected.concat(parseGmPosts(html));
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
 
-    var take = Math.min(gids.length, p.take);
+    var ranked = filterAndRank(mergePosts(collected), p);
+    var take = Math.min(ranked.length, p.take);
+    setStatus("조회수순 정리 · " + take + "개");
+
+    // 목록 썸네일부터 조회수순으로 먼저 표시
+    for (var t = 0; t < ranked.length; t++) {
+      if (ranked[t].thumb) addImgs([ranked[t].thumb], ranked[t].views);
+    }
+
     for (var n = 0; n < take; n++) {
       throwIfAborted();
-      var gid = gids[n];
-      setStatus("사진 모으는 중... " + (n + 1) + "/" + take);
+      var post = ranked[n];
+      setStatus(
+        "사진 모으는 중... " + (n + 1) + "/" + take + " · 조회 " + post.views
+      );
       try {
-        addImgs(extractByAllow(await fetchText(VIEW + gid), GM_ALLOW, GM_ABS));
+        addImgs(
+          extractByAllow(await fetchText(VIEW + post.id), GM_ALLOW, GM_ABS),
+          post.views
+        );
       } catch (e) {
         if (e.name === "AbortError") throw e;
       }
     }
   }
 
-  function renderGallery(images) {
+  function renderGallery(items) {
     galleryEl.innerHTML = "";
-    for (var i = 0; i < images.length; i++) {
+    for (var i = 0; i < items.length; i++) {
       (function (src) {
         var btn = document.createElement("button");
         btn.type = "button";
@@ -330,7 +416,7 @@
           lightbox.hidden = false;
         };
         galleryEl.appendChild(btn);
-      })(images[i]);
+      })(items[i].url);
     }
   }
 
@@ -348,21 +434,40 @@
 
   async function runSearch() {
     var p = period();
-    setStatus("검색 시작...", "");
+    setStatus(p.ko + " · 조회수순 검색 시작...", "");
     setRunning(true);
     galleryEl.innerHTML = "";
     abortCtrl = new AbortController();
 
-    var images = [];
+    var items = [];
     var seenImg = {};
 
-    function addImgs(arr) {
+    function addImgs(arr, views) {
+      var v = views || 0;
+      var changed = false;
       for (var i = 0; i < arr.length; i++) {
-        if (seenImg[arr[i]]) continue;
-        seenImg[arr[i]] = 1;
-        images.push(arr[i]);
+        var u = arr[i];
+        if (!u) continue;
+        if (seenImg[u]) {
+          // 같은 이미지면 더 높은 조회수로 갱신
+          for (var j = 0; j < items.length; j++) {
+            if (items[j].url === u && v > items[j].views) {
+              items[j].views = v;
+              changed = true;
+            }
+          }
+          continue;
+        }
+        seenImg[u] = 1;
+        items.push({ url: u, views: v });
+        changed = true;
       }
-      if (arr.length) renderGallery(images);
+      if (changed) {
+        items.sort(function (a, b) {
+          return b.views - a.views;
+        });
+        renderGallery(items);
+      }
     }
 
     try {
@@ -370,16 +475,22 @@
       await scrapeGamemeca(p, addImgs);
 
       setRunning(false);
-      if (!images.length) {
-        setStatus("이미지를 못 모았어. 다시 검색 눌러봐.", "error");
+      if (!items.length) {
+        setStatus("해당 기간 이미지를 못 모았어. 다시 검색 눌러봐.", "error");
         return;
       }
-      setStatus("완료 · 사진 " + images.length + "장", "ok");
+      setStatus(
+        p.ko + " · 조회수순 · 사진 " + items.length + "장",
+        "ok"
+      );
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
-        renderGallery(images);
-        setStatus("중지 · " + images.length + "장", "ok");
+        items.sort(function (a, b) {
+          return b.views - a.views;
+        });
+        renderGallery(items);
+        setStatus("중지 · " + items.length + "장", "ok");
         return;
       }
       setStatus("오류: " + (e.message || e), "error");
@@ -394,5 +505,5 @@
     });
   });
 
-  setStatus("5.3 · 검색 눌러봐.", "");
+  setStatus("5.4 · 일간/주간/월간 = 기간 안 조회수순. 검색 눌러봐.", "");
 })();

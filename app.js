@@ -540,64 +540,47 @@
   function renderVisible(force) {
     var want = Math.min(visibleCount, allItems.length);
     var current = galleryEl.querySelectorAll(".shot").length;
-    if (force || current !== want || want <= PAGE_SIZE) {
+    if (force || current > want) {
       galleryEl.innerHTML = "";
-      for (var i = 0; i < want; i++) {
-        (function (src) {
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "shot";
-          var img = document.createElement("img");
-          img.src = src;
-          img.alt = "";
-          img.loading = "lazy";
-          img.decoding = "async";
-          img.referrerPolicy = "no-referrer";
-          img.onerror = function () {
-            if (btn.parentNode) btn.parentNode.removeChild(btn);
-          };
-          btn.appendChild(img);
-          btn.onclick = function () {
-            openLightbox(src);
-          };
-          galleryEl.appendChild(btn);
-        })(allItems[i].url);
-      }
-    } else {
-      for (var j = current; j < want; j++) {
-        (function (src) {
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "shot";
-          var img = document.createElement("img");
-          img.src = src;
-          img.alt = "";
-          img.loading = "lazy";
-          img.decoding = "async";
-          img.referrerPolicy = "no-referrer";
-          img.onerror = function () {
-            if (btn.parentNode) btn.parentNode.removeChild(btn);
-          };
-          btn.appendChild(img);
-          btn.onclick = function () {
-            openLightbox(src);
-          };
-          galleryEl.appendChild(btn);
-        })(allItems[j].url);
-      }
+      current = 0;
+    }
+    for (var i = current; i < want; i++) {
+      (function (src) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "shot";
+        var img = document.createElement("img");
+        img.src = src;
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.referrerPolicy = "no-referrer";
+        img.onerror = function () {
+          if (btn.parentNode) btn.parentNode.removeChild(btn);
+        };
+        btn.appendChild(img);
+        btn.onclick = function () {
+          openLightbox(src);
+        };
+        galleryEl.appendChild(btn);
+      })(allItems[i].url);
     }
     updateFooterBtns();
   }
 
   var paintTimer = null;
+  var paintForce = false;
   function schedulePaint(force) {
+    if (force) paintForce = true;
     if (paintTimer) return;
     paintTimer = setTimeout(function () {
       paintTimer = null;
+      var f = paintForce;
+      paintForce = false;
       if (visibleCount < PAGE_SIZE && allItems.length) {
         visibleCount = Math.min(PAGE_SIZE, allItems.length);
       }
-      renderVisible(!!force);
+      renderVisible(f);
     }, 120);
   }
 
@@ -609,10 +592,10 @@
       var u = arr[i];
       if (!u) continue;
       if (seenImg[u]) {
+        // 이미 확보한 사진은 자리 유지 (중간에 끼어들지 않음)
         for (var j = 0; j < allItems.length; j++) {
           if (allItems[j].url === u && v > allItems[j].views) {
             allItems[j].views = v;
-            changed = true;
           }
         }
         continue;
@@ -623,15 +606,17 @@
       added++;
     }
     if (!changed) return 0;
-    allItems.sort(function (a, b) {
-      return b.views - a.views;
-    });
+
+    // 화면은 확보 순서대로 아래로만 붙임 (조회수 재정렬로 중간 삽입 안 함)
     if (visibleCount === 0 && allItems.length) {
       visibleCount = Math.min(PAGE_SIZE, allItems.length);
-    } else if (visibleCount > 0 && visibleCount < PAGE_SIZE) {
+      schedulePaint(true);
+    } else if (visibleCount < PAGE_SIZE && allItems.length > visibleCount) {
       visibleCount = Math.min(PAGE_SIZE, allItems.length);
+      schedulePaint(false);
+    } else {
+      updateFooterBtns();
     }
-    schedulePaint(true);
     return added;
   }
 

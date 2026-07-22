@@ -687,10 +687,15 @@
     if (!changed) return 0;
 
     var list = filteredItems();
+    // 이미 50장 이상 보고 있으면 자동으로 화면을 늘리지 않음 → 더보기로만 이어보기
     if (visibleCount === 0 && list.length) {
       visibleCount = Math.min(PAGE_SIZE, list.length);
       schedulePaint(true);
-    } else if (visibleCount < PAGE_SIZE && list.length > visibleCount) {
+    } else if (
+      visibleCount > 0 &&
+      visibleCount < PAGE_SIZE &&
+      list.length > visibleCount
+    ) {
       visibleCount = Math.min(PAGE_SIZE, list.length);
       schedulePaint(false);
     } else {
@@ -1251,6 +1256,7 @@
     if (!session || session.done) return;
     var plan = session.plan;
     var beforeCount = allItems.length;
+    var beforeFiltered = filteredItems().length;
     setStatus("추가검색 · 다음 조회수 자료 수집 중...", "");
     setRunning(true);
     abortCtrl = new AbortController();
@@ -1263,28 +1269,50 @@
       setRunning(false);
 
       var gained = allItems.length - beforeCount;
-      if (!gained) {
-        session.done = true;
-        updateFooterBtns();
+      var list = filteredItems();
+      var gainedFiltered = list.length - beforeFiltered;
+
+      // 화면 장수는 유지 → 새로 확보된 필터 분은 더보기로 이어보게
+      if (visibleCount > list.length) {
+        visibleCount = list.length;
+      }
+      renderVisible(true);
+      updateFooterBtns();
+
+      if (gainedFiltered > 0) {
         setStatus(
-          "더 이상 새 사진이 없어. 확보 " + allItems.length + "장",
+          "추가검색 완료 · 필터 +" +
+            gainedFiltered +
+            "장 · 화면 " +
+            visibleCount +
+            " / 필터 " +
+            list.length +
+            " (확보 " +
+            allItems.length +
+            ")",
           "ok"
         );
         return;
       }
-      // 새로 모은 건 더보기로 이어서 보게
-      renderVisible(true);
-      setStatus(
-        "추가검색 완료 · +" +
-          gained +
-          "장 · 확보 " +
-          allItems.length +
-          "장 · 화면 " +
-          visibleCount +
-          "장",
-        "ok"
-      );
-      updateFooterBtns();
+      if (gained > 0) {
+        setStatus(
+          "새 확보는 있지만 지금 필터(움짤/사진)에 맞는 게 없어. 필터를 바꿔보거나 추가검색.",
+          "ok"
+        );
+        return;
+      }
+      // 이번 라운드 신규 0장이어도, 아직 파고들 글이 있으면 추가검색 유지
+      if (session.done) {
+        setStatus(
+          "더 이상 새 사진이 없어. 확보 " + allItems.length + "장",
+          "ok"
+        );
+      } else {
+        setStatus(
+          "이번 추가검색에선 새 사진이 없었어. 추가검색을 다시 눌러봐.",
+          "ok"
+        );
+      }
     } catch (e) {
       setRunning(false);
       refreshSessionDone();

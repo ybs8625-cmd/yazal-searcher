@@ -1,5 +1,5 @@
 (() => {
-  var PAGE_SIZE = 50;
+  var PAGE_SIZE = 30;
   var MORE_BATCH = 20;
   var MORE_PAGES = 5;
   var MAX_PAGES = 120;
@@ -59,6 +59,43 @@
     return /\.gif(\?|$)/i.test(String(u).split("#")[0]);
   }
 
+  function countStats() {
+    var gif = 0;
+    var photo = 0;
+    for (var i = 0; i < allItems.length; i++) {
+      if (isGifUrl(allItems[i].url)) gif++;
+      else photo++;
+    }
+    var list = filteredItems();
+    var shown = Math.min(visibleCount, list.length);
+    var left = Math.max(0, list.length - shown);
+    return {
+      gif: gif,
+      photo: photo,
+      total: allItems.length,
+      filtered: list.length,
+      shown: shown,
+      left: left,
+    };
+  }
+
+  /** 검색/대기 상태 상세 표기 */
+  function refreshStatus(phase, kind) {
+    var s = countStats();
+    var head = phase || (running ? "검색 중" : "대기");
+    var msg =
+      head +
+      " · 움짤 " +
+      s.gif +
+      " · 사진 " +
+      s.photo +
+      " · 화면 " +
+      s.shown +
+      " · 남은 " +
+      s.left;
+    setStatus(msg, kind || (running ? "" : "ok"));
+  }
+
   function filteredItems() {
     var out = [];
     for (var i = 0; i < allItems.length; i++) {
@@ -83,6 +120,7 @@
     syncTypeFilterUi();
     visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
     renderVisible(true);
+    refreshStatus(running ? "검색 중" : "필터 변경");
   });
 
   filterPhotoBtn.addEventListener("click", function () {
@@ -91,6 +129,7 @@
     syncTypeFilterUi();
     visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
     renderVisible(true);
+    refreshStatus(running ? "검색 중" : "필터 변경");
   });
 
   syncTypeFilterUi();
@@ -151,7 +190,7 @@
       String(toMonthEl.value).padStart(2, "0") +
       " · " +
       months +
-      "개월 · 2026.01부터 · 화면은 50장씩";
+      "개월 · 2026.01부터 · 화면은 30장씩";
   }
 
   [fromYearEl, fromMonthEl, toYearEl, toMonthEl].forEach(function (el) {
@@ -687,7 +726,7 @@
     if (!changed) return 0;
 
     var list = filteredItems();
-    // 이미 50장 이상 보고 있으면 자동으로 화면을 늘리지 않음 → 더보기로만 이어보기
+    // 이미 한 화면(30장) 이상 보고 있으면 자동으로 화면을 늘리지 않음 → 더보기로만 이어보기
     if (visibleCount === 0 && list.length) {
       visibleCount = Math.min(PAGE_SIZE, list.length);
       schedulePaint(true);
@@ -701,6 +740,7 @@
     } else {
       updateFooterBtns();
     }
+    if (running) refreshStatus("검색 중");
     return added;
   }
 
@@ -734,17 +774,7 @@
     var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus(
-        "목록 수집 중... " +
-          page +
-          "/" +
-          toPage +
-          " · 기간글 " +
-          collected.length +
-          " · 확보 " +
-          allItems.length +
-          "장"
-      );
+      refreshStatus("목록 " + page + "/" + toPage);
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
         collected = collected.concat(parseBobPosts(html, plan));
@@ -772,16 +802,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = bucket.posts[bucket.dig + n];
-      setStatus(
-        "사진 모으는 중... " +
-          (n + 1) +
-          "/" +
-          take +
-          " · 화면 " +
-          visibleCount +
-          "/" +
-          allItems.length
-      );
+      refreshStatus("본문 " + (n + 1) + "/" + take);
       var ok = false;
       try {
         var imgs = extractByAllow(
@@ -870,17 +891,7 @@
     var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus(
-        "목록 수집 중... " +
-          page +
-          "/" +
-          toPage +
-          " · 기간글 " +
-          collected.length +
-          " · 확보 " +
-          allItems.length +
-          "장"
-      );
+      refreshStatus("목록 " + page + "/" + toPage);
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
         collected = collected.concat(parseGmPosts(html, plan));
@@ -917,16 +928,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = bucket.posts[bucket.dig + n];
-      setStatus(
-        "사진 모으는 중... " +
-          (n + 1) +
-          "/" +
-          take +
-          " · 화면 " +
-          visibleCount +
-          "/" +
-          allItems.length
-      );
+      refreshStatus("본문 " + (n + 1) + "/" + take);
       try {
         addImgs(
           extractByAllow(await fetchText(VIEW + post.id), GM_ALLOW, GM_ABS),
@@ -997,17 +999,7 @@
     var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      setStatus(
-        "목록 수집 중... " +
-          page +
-          "/" +
-          toPage +
-          " · 기간글 " +
-          collected.length +
-          " · 확보 " +
-          allItems.length +
-          "장"
-      );
+      refreshStatus("목록 " + page + "/" + toPage);
       try {
         var html = await fetchText(LIST + (page > 1 ? "?page=" + page : ""));
         collected = collected.concat(parseJjtvPosts(html, plan));
@@ -1034,16 +1026,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = bucket.posts[bucket.dig + n];
-      setStatus(
-        "사진 모으는 중... " +
-          (n + 1) +
-          "/" +
-          take +
-          " · 화면 " +
-          visibleCount +
-          "/" +
-          allItems.length
-      );
+      refreshStatus("본문 " + (n + 1) + "/" + take);
       try {
         var imgs = extractByAllow(
           await fetchText(VIEW + post.id),
@@ -1155,13 +1138,10 @@
   stopBtn.onclick = function () {
     if (!running || !abortCtrl) return;
     abortCtrl.abort();
-    setStatus(
-      "중지 · 확보 " + allItems.length + "장 · 화면 " + visibleCount + "장",
-      "ok"
-    );
     setRunning(false);
     refreshSessionDone();
     renderVisible(true);
+    refreshStatus("중지", "ok");
   };
 
   moreBtn.onclick = function () {
@@ -1174,10 +1154,7 @@
       return;
     }
     renderVisible(false);
-    setStatus(
-      "화면 " + visibleCount + " / 필터 " + list.length + "장 (확보 " + allItems.length + ")",
-      "ok"
-    );
+    refreshStatus("더보기", "ok");
   };
 
   moreSearchBtn.onclick = function () {
@@ -1191,7 +1168,6 @@
 
   async function runSearch() {
     var plan = getSearchPlan();
-    setStatus(plan.label + " · 조회수순 검색 시작...", "");
     setRunning(true);
     allItems = [];
     seenImg = {};
@@ -1207,6 +1183,7 @@
     moreBtn.hidden = true;
     moreSearchBtn.hidden = true;
     abortCtrl = new AbortController();
+    refreshStatus(plan.label + " 검색 시작");
 
     try {
       await scrapeBobae(plan, session.bob, plan.take);
@@ -1224,15 +1201,7 @@
         visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
       }
       renderVisible(true);
-      setStatus(
-        plan.label +
-          " · 확보 " +
-          allItems.length +
-          "장 · 화면 " +
-          visibleCount +
-          "장",
-        "ok"
-      );
+      refreshStatus(plan.label + " 완료", "ok");
     } catch (e) {
       setRunning(false);
       refreshSessionDone();
@@ -1241,10 +1210,7 @@
           visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
         }
         renderVisible(true);
-        setStatus(
-          "중지 · 확보 " + allItems.length + "장 · 화면 " + visibleCount + "장",
-          "ok"
-        );
+        refreshStatus("중지", "ok");
         return;
       }
       setStatus("오류: " + (e.message || e), "error");
@@ -1257,9 +1223,9 @@
     var plan = session.plan;
     var beforeCount = allItems.length;
     var beforeFiltered = filteredItems().length;
-    setStatus("추가검색 · 다음 조회수 자료 수집 중...", "");
     setRunning(true);
     abortCtrl = new AbortController();
+    refreshStatus("추가검색 중");
 
     try {
       await extendBobae(plan, session.bob);
@@ -1272,7 +1238,6 @@
       var list = filteredItems();
       var gainedFiltered = list.length - beforeFiltered;
 
-      // 화면 장수는 유지 → 새로 확보된 필터 분은 더보기로 이어보게
       if (visibleCount > list.length) {
         visibleCount = list.length;
       }
@@ -1280,48 +1245,30 @@
       updateFooterBtns();
 
       if (gainedFiltered > 0) {
-        setStatus(
-          "추가검색 완료 · 필터 +" +
-            gainedFiltered +
-            "장 · 화면 " +
-            visibleCount +
-            " / 필터 " +
-            list.length +
-            " (확보 " +
-            allItems.length +
-            ")",
-          "ok"
-        );
+        refreshStatus("추가검색 완료(+" + gainedFiltered + ")", "ok");
         return;
       }
       if (gained > 0) {
         setStatus(
-          "새 확보는 있지만 지금 필터(움짤/사진)에 맞는 게 없어. 필터를 바꿔보거나 추가검색.",
+          "새 확보는 있지만 지금 필터(움짤/사진)에 맞는 게 없어. 필터를 바꿔보거나 추가검색. · 움짤 " +
+            countStats().gif +
+            " · 사진 " +
+            countStats().photo,
           "ok"
         );
         return;
       }
-      // 이번 라운드 신규 0장이어도, 아직 파고들 글이 있으면 추가검색 유지
       if (session.done) {
-        setStatus(
-          "더 이상 새 사진이 없어. 확보 " + allItems.length + "장",
-          "ok"
-        );
+        refreshStatus("더 이상 없음", "ok");
       } else {
-        setStatus(
-          "이번 추가검색에선 새 사진이 없었어. 추가검색을 다시 눌러봐.",
-          "ok"
-        );
+        refreshStatus("이번엔 신규 없음 · 추가검색 다시", "ok");
       }
     } catch (e) {
       setRunning(false);
       refreshSessionDone();
       if (e.name === "AbortError" || e.message === "STOPPED") {
         renderVisible(true);
-        setStatus(
-          "중지 · 확보 " + allItems.length + "장 · 화면 " + visibleCount + "장",
-          "ok"
-        );
+        refreshStatus("중지", "ok");
         return;
       }
       setStatus("오류: " + (e.message || e), "error");

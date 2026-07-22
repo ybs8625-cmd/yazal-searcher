@@ -23,7 +23,6 @@
   var periodsEl = document.getElementById("periods");
   var rangeBox = document.getElementById("rangeBox");
   var rangeHint = document.getElementById("rangeHint");
-  var rangePresets = document.getElementById("rangePresets");
   var fromYearEl = document.getElementById("fromYear");
   var fromMonthEl = document.getElementById("fromMonth");
   var toYearEl = document.getElementById("toYear");
@@ -120,46 +119,6 @@
     toMonthEl.value = String(b.m);
     syncRangeHint();
   }
-
-  [
-    {
-      ko: "최근 3개월",
-      apply: function () {
-        var d = new Date(THIS_Y, THIS_M - 3, 1);
-        setRange(d.getFullYear(), d.getMonth() + 1, THIS_Y, THIS_M);
-      },
-    },
-    {
-      ko: "최근 6개월",
-      apply: function () {
-        var d = new Date(THIS_Y, THIS_M - 6, 1);
-        setRange(d.getFullYear(), d.getMonth() + 1, THIS_Y, THIS_M);
-      },
-    },
-    {
-      ko: "올해",
-      apply: function () {
-        setRange(THIS_Y, 1, THIS_Y, THIS_M);
-      },
-    },
-    {
-      ko: "26년 1월~",
-      apply: function () {
-        setRange(MIN_Y, MIN_M, THIS_Y, THIS_M);
-      },
-    },
-  ].forEach(function (p) {
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "chip";
-    btn.textContent = p.ko;
-    btn.addEventListener("click", function () {
-      selectedPeriod = "custom";
-      updatePeriodUi();
-      p.apply();
-    });
-    rangePresets.appendChild(btn);
-  });
 
   syncRangeHint();
 

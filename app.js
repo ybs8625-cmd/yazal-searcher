@@ -79,25 +79,27 @@
     };
   }
 
-  /** 검색/대기 상태 상세 표기 (켜진 필터 기준) */
+  function gatherLabel() {
+    if (showGif && showPhoto) return "움짤/사진 모으는 중";
+    if (showGif) return "움짤 모으는 중";
+    if (showPhoto) return "사진 모으는 중";
+    return "모으는 중";
+  }
+
+  /** 켜진 필터 기준: 모으는 중 · 화면 표시수/확보수 */
   function refreshStatus(phase, kind) {
     var s = countStats();
-    var head = phase || (running ? "검색 중" : "대기");
-    var parts = [head];
-
-    if (showGif && showPhoto) {
-      parts.push("전체 " + s.total);
-      parts.push("움짤 " + s.gif);
-      parts.push("사진 " + s.photo);
-    } else if (showGif) {
-      parts.push("움짤 " + s.gif);
-    } else if (showPhoto) {
-      parts.push("사진 " + s.photo);
+    var totalSel =
+      showGif && showPhoto ? s.total : showGif ? s.gif : showPhoto ? s.photo : 0;
+    var head;
+    if (running) {
+      head = gatherLabel();
+    } else {
+      head = phase || "완료";
     }
-
-    parts.push("화면 " + s.shown);
-    parts.push("남은 " + s.left);
-    setStatus(parts.join(" · "), kind || (running ? "" : "ok"));
+    var msg = head + " · 화면 " + s.shown + "/" + totalSel;
+    if (s.left > 0) msg += " · 남은 " + s.left;
+    setStatus(msg, kind || (running ? "" : "ok"));
   }
 
   function filteredItems() {
@@ -124,7 +126,7 @@
     syncTypeFilterUi();
     visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
     renderVisible(true);
-    refreshStatus(running ? "검색 중" : "필터 변경");
+    refreshStatus(running ? null : "필터 변경");
   });
 
   filterPhotoBtn.addEventListener("click", function () {
@@ -133,7 +135,7 @@
     syncTypeFilterUi();
     visibleCount = Math.min(PAGE_SIZE, filteredItems().length);
     renderVisible(true);
-    refreshStatus(running ? "검색 중" : "필터 변경");
+    refreshStatus(running ? null : "필터 변경");
   });
 
   syncTypeFilterUi();
@@ -744,7 +746,7 @@
     } else {
       updateFooterBtns();
     }
-    if (running) refreshStatus("검색 중");
+    if (running) refreshStatus();
     return added;
   }
 
@@ -778,7 +780,7 @@
     var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      refreshStatus("목록 " + page + "/" + toPage);
+      refreshStatus();
       try {
         var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
         collected = collected.concat(parseBobPosts(html, plan));
@@ -806,7 +808,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = bucket.posts[bucket.dig + n];
-      refreshStatus("본문 " + (n + 1) + "/" + take);
+      refreshStatus();
       var ok = false;
       try {
         var imgs = extractByAllow(
@@ -895,7 +897,7 @@
     var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      refreshStatus("목록 " + page + "/" + toPage);
+      refreshStatus();
       try {
         var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
         collected = collected.concat(parseGmPosts(html, plan));
@@ -932,7 +934,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = bucket.posts[bucket.dig + n];
-      refreshStatus("본문 " + (n + 1) + "/" + take);
+      refreshStatus();
       try {
         addImgs(
           extractByAllow(await fetchText(VIEW + post.id), GM_ALLOW, GM_ABS),
@@ -1003,7 +1005,7 @@
     var passed = false;
     for (var page = fromPage; page <= toPage; page++) {
       throwIfAborted();
-      refreshStatus("목록 " + page + "/" + toPage);
+      refreshStatus();
       try {
         var html = await fetchText(LIST + (page > 1 ? "?page=" + page : ""));
         collected = collected.concat(parseJjtvPosts(html, plan));
@@ -1030,7 +1032,7 @@
     for (var n = 0; n < take; n++) {
       throwIfAborted();
       var post = bucket.posts[bucket.dig + n];
-      refreshStatus("본문 " + (n + 1) + "/" + take);
+      refreshStatus();
       try {
         var imgs = extractByAllow(
           await fetchText(VIEW + post.id),

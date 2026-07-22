@@ -1,19 +1,8 @@
 (() => {
-  // 보배드림 NSFW 게시판만
-  var BOARD = "nsfw";
-  var LIST_BASE = "https://www.bobaedream.co.kr/list?code=" + BOARD;
-  var VIEW_DESK = "https://www.bobaedream.co.kr/view?code=" + BOARD + "&No=";
-  var VIEW_MOBILE = "https://m.bobaedream.co.kr/board/bbs_view/" + BOARD + "/";
-  // 사용자가 준 모바일 목록 (참고용으로도 시도)
-  var LIST_MOBILE = "https://m.bobaedream.co.kr/board/new_writing/" + BOARD;
-
-  // 본문 첨부만 허용 (광고/UI 제외)
-  var ALLOW_IMG = /^https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\//i;
-
   var PERIODS = [
-    { id: "day", ko: "일간", pages: 2, take: 20 },
-    { id: "week", ko: "주간", pages: 5, take: 40 },
-    { id: "month", ko: "월간", pages: 10, take: 60 },
+    { id: "day", ko: "일간", pages: 2, take: 16 },
+    { id: "week", ko: "주간", pages: 5, take: 30 },
+    { id: "month", ko: "월간", pages: 10, take: 50 },
   ];
 
   var selectedPeriod = "day";
@@ -140,53 +129,184 @@
     var s = String(u).trim().replace(/&amp;/g, "&");
     if (s.indexOf("//") === 0) s = "https:" + s;
     if (!/^https?:\/\//i.test(s)) return null;
-    // jina가 가끔 중복 붙이는 경우 정리
     s = s.replace(
       /https?:\/\/file\d*\.bobaedream\.co\.kr\/https?:\/\//i,
       "https://"
     );
+    s = s.replace(/https?:\/\/cdn\.gamemeca\.com\/https?:\/\//i, "https://");
     return s.split("#")[0];
   }
 
-  /** 목록에서 글 번호 뽑기 */
-  function extractPostNos(html) {
+  function isImageUrl(u) {
+    return /\.(jpe?g|png|webp|gif)(\?|$)/i.test(u.split("?")[0]);
+  }
+
+  function extractByAllow(html, allowRe, absoluteRe) {
+    var out = [];
+    var seen = {};
+    function push(raw) {
+      var u = normalizeUrl(raw);
+      if (!u || seen[u]) return;
+      if (!allowRe.test(u)) return;
+      if (!isImageUrl(u)) return;
+      seen[u] = 1;
+      out.push(u);
+    }
+    var x;
+    var re1 =
+      /(?:src|data-src|data-original|data-lazy)\s*=\s*["']([^"']+)["']/gi;
+    while ((x = re1.exec(html))) push(x[1]);
+    if (absoluteRe) {
+      while ((x = absoluteRe.exec(html))) push(x[0].replace(/[.,;)]+$/, ""));
+    }
+    return out;
+  }
+
+  // —— 보배드림 NSFW ——
+  var BOB_ALLOW = /^https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\//i;
+  var BOB_ABS =
+    /https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\/[^\s"'<>)\\]+/gi;
+
+  function bobPostNos(html) {
     var nos = [];
     var seen = {};
     var re = /(?:code=nsfw&No=|bbs_view\/nsfw\/|No=)(\d{3,})/gi;
     var m;
     while ((m = re.exec(html))) {
       var no = m[1];
-      if (seen[no]) continue;
-      // 운영/공지성 낮은 번호는 대략 스킵
-      if (parseInt(no, 10) < 1000) continue;
+      if (seen[no] || parseInt(no, 10) < 1000) continue;
       seen[no] = 1;
       nos.push(no);
     }
     return nos;
   }
 
-  /** 본문 NSFW 첨부 이미지만 */
-  function extractNsfwImages(html) {
-    var out = [];
+  async function scrapeBobae(p, addImgs) {
+    var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
+    var LIST_M = "https://m.bobaedream.co.kr/board/new_writing/nsfw";
+    var VIEW_M = "https://m.bobaedream.co.kr/board/bbs_view/nsfw/";
+    var VIEW_D = "https://www.bobaedream.co.kr/view?code=nsfw&No=";
+    var nos = [];
     var seen = {};
-    function push(raw) {
-      var u = normalizeUrl(raw);
-      if (!u || seen[u]) return;
-      if (!ALLOW_IMG.test(u)) return;
-      if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u.split("?")[0])) return;
-      seen[u] = 1;
-      out.push(u);
+
+    try {
+      bobPostNos(await fetchText(LIST_M)).forEach(function (no) {
+        if (seen[no]) return;
+        seen[no] = 1;
+        nos.push(no);
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
     }
 
-    var x;
-    var re1 =
-      /(?:src|data-src|data-original|data-lazy)\s*=\s*["']([^"']+)["']/gi;
-    while ((x = re1.exec(html))) push(x[1]);
-    var re2 =
-      /https?:\/\/file\d*\.bobaedream\.co\.kr\/nsfw\/[^\s"'<>)\\]+/gi;
-    while ((x = re2.exec(html))) push(x[0].replace(/[.,;)]+$/, ""));
+    for (var page = 1; page <= p.pages; page++) {
+      throwIfAborted();
+      setStatus("보배드림 목록 " + page + "/" + p.pages);
+      try {
+        var html = await fetchText(LIST + (page > 1 ? "&page=" + page : ""));
+        bobPostNos(html).forEach(function (no) {
+          if (seen[no]) return;
+          seen[no] = 1;
+          nos.push(no);
+        });
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+      }
+    }
 
-    return out;
+    var take = Math.min(nos.length, p.take);
+    for (var n = 0; n < take; n++) {
+      throwIfAborted();
+      var no = nos[n];
+      setStatus("보배드림 본문 " + (n + 1) + "/" + take);
+      var ok = false;
+      try {
+        var imgs = extractByAllow(await fetchText(VIEW_M + no), BOB_ALLOW, BOB_ABS);
+        if (imgs.length) {
+          addImgs(imgs);
+          ok = true;
+        }
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+      }
+      if (!ok) {
+        try {
+          addImgs(
+            extractByAllow(await fetchText(VIEW_D + no), BOB_ALLOW, BOB_ABS)
+          );
+        } catch (e) {
+          if (e.name === "AbortError") throw e;
+        }
+      }
+    }
+  }
+
+  // —— 게임메카 fam_gallery ——
+  var GM_ALLOW = /^https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\//i;
+  var GM_ABS =
+    /https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\/[^\s"'<>)\\]+/gi;
+
+  function gmGids(html) {
+    var ids = [];
+    var seen = {};
+    var re = /(?:[?&]gid=|gid=)(\d{4,})/gi;
+    var m;
+    while ((m = re.exec(html))) {
+      var id = m[1];
+      if (seen[id]) continue;
+      seen[id] = 1;
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async function scrapeGamemeca(p, addImgs) {
+    var LIST = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
+    var LIST_M = "https://m.gamemeca.com/fam.php?rts=board&gcode=fam_gallery";
+    var VIEW = "https://www.gamemeca.com/fam.php?rts=board&gcode=fam_gallery&gid=";
+    var gids = [];
+    var seen = {};
+
+    try {
+      var mob = await fetchText(LIST_M);
+      addImgs(extractByAllow(mob, GM_ALLOW, GM_ABS));
+      gmGids(mob).forEach(function (id) {
+        if (seen[id]) return;
+        seen[id] = 1;
+        gids.push(id);
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
+    }
+
+    for (var page = 1; page <= p.pages; page++) {
+      throwIfAborted();
+      setStatus("게임메카 목록 " + page + "/" + p.pages);
+      try {
+        var html = await fetchText(LIST + (page > 1 ? "&p=" + page : ""));
+        // 목록 썸네일도 바로 반영
+        addImgs(extractByAllow(html, GM_ALLOW, GM_ABS));
+        gmGids(html).forEach(function (id) {
+          if (seen[id]) return;
+          seen[id] = 1;
+          gids.push(id);
+        });
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+      }
+    }
+
+    var take = Math.min(gids.length, p.take);
+    for (var n = 0; n < take; n++) {
+      throwIfAborted();
+      var gid = gids[n];
+      setStatus("게임메카 본문 " + (n + 1) + "/" + take);
+      try {
+        addImgs(extractByAllow(await fetchText(VIEW + gid), GM_ALLOW, GM_ABS));
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+      }
+    }
   }
 
   function renderGallery(images) {
@@ -228,13 +348,11 @@
 
   async function runSearch() {
     var p = period();
-    setStatus("보배드림 NSFW 목록 읽는 중...", "");
+    setStatus("검색 시작...", "");
     setRunning(true);
     galleryEl.innerHTML = "";
     abortCtrl = new AbortController();
 
-    var nos = [];
-    var seenNo = {};
     var images = [];
     var seenImg = {};
 
@@ -248,77 +366,18 @@
     }
 
     try {
-      // 모바일 목록도 한번 시도
-      try {
-        var mob = await fetchText(LIST_MOBILE);
-        extractPostNos(mob).forEach(function (no) {
-          if (seenNo[no]) return;
-          seenNo[no] = 1;
-          nos.push(no);
-        });
-      } catch (e) {
-        if (e.name === "AbortError") throw e;
-      }
-
-      // PC 목록 페이지들
-      for (var page = 1; page <= p.pages; page++) {
-        throwIfAborted();
-        setStatus("목록 " + page + "/" + p.pages + " 읽는 중...");
-        var listUrl = LIST_BASE + (page > 1 ? "&page=" + page : "");
-        try {
-          var html = await fetchText(listUrl);
-          var found = extractPostNos(html);
-          for (var i = 0; i < found.length; i++) {
-            if (seenNo[found[i]]) continue;
-            seenNo[found[i]] = 1;
-            nos.push(found[i]);
-          }
-          setStatus("글 " + nos.length + "개 확보");
-        } catch (e) {
-          if (e.name === "AbortError") throw e;
-        }
-      }
-
-      if (!nos.length) {
-        setStatus("글을 못 찾았어. 잠시 후 다시 눌러봐.", "error");
-        setRunning(false);
-        return;
-      }
-
-      var take = Math.min(nos.length, p.take);
-      for (var n = 0; n < take; n++) {
-        throwIfAborted();
-        var no = nos[n];
-        setStatus("본문 " + (n + 1) + "/" + take + " · No." + no);
-
-        // 모바일 본문 우선, 실패 시 PC
-        var ok = false;
-        try {
-          var mHtml = await fetchText(VIEW_MOBILE + no);
-          var imgs = extractNsfwImages(mHtml);
-          if (imgs.length) {
-            addImgs(imgs);
-            ok = true;
-          }
-        } catch (e) {
-          if (e.name === "AbortError") throw e;
-        }
-        if (!ok) {
-          try {
-            var dHtml = await fetchText(VIEW_DESK + no);
-            addImgs(extractNsfwImages(dHtml));
-          } catch (e) {
-            if (e.name === "AbortError") throw e;
-          }
-        }
-      }
+      await scrapeBobae(p, addImgs);
+      await scrapeGamemeca(p, addImgs);
 
       setRunning(false);
       if (!images.length) {
-        setStatus("본문 이미지를 못 모았어. 다시 검색 눌러봐.", "error");
+        setStatus("이미지를 못 모았어. 다시 검색 눌러봐.", "error");
         return;
       }
-      setStatus("보배드림 NSFW · 사진 " + images.length + "장", "ok");
+      setStatus(
+        "보배드림 + 게임메카 · 사진 " + images.length + "장",
+        "ok"
+      );
     } catch (e) {
       setRunning(false);
       if (e.name === "AbortError" || e.message === "STOPPED") {
@@ -338,5 +397,5 @@
     });
   });
 
-  setStatus("5.1 · 보배드림 NSFW 이미지 수집. 검색 눌러봐.", "");
+  setStatus("5.2 · 보배드림 NSFW + 게임메카 갤러리. 검색 눌러봐.", "");
 })();

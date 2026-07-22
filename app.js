@@ -167,8 +167,8 @@
     return Date.now() - p.days * 24 * 60 * 60 * 1000;
   }
 
-  /** 보배드림 날짜: "13:57"(오늘) / "07/21"(월/일) */
-  function parseBobDate(raw) {
+  /** 목록 날짜: "13:57"(오늘) / "07/21" / "07-21" */
+  function parseListDate(raw) {
     var s = String(raw || "").trim();
     var now = new Date();
     var hm = /^(\d{1,2}):(\d{2})$/.exec(s);
@@ -181,7 +181,7 @@
         +hm[2]
       ).getTime();
     }
-    var md = /^(\d{1,2})\/(\d{1,2})$/.exec(s);
+    var md = /^(\d{1,2})[\/\-](\d{1,2})$/.exec(s);
     if (md) {
       var d = new Date(now.getFullYear(), +md[1] - 1, +md[2], 12, 0, 0);
       if (d.getTime() > now.getTime() + 36 * 3600000) {
@@ -209,7 +209,22 @@
       posts.push({
         id: m[1],
         views: views,
-        time: parseBobDate(m[2]),
+        time: parseListDate(m[2]),
+      });
+    }
+    return posts;
+  }
+
+  function parseJjtvPosts(html) {
+    var posts = [];
+    var re =
+      /td_subject[\s\S]*?<a href="https:\/\/jjtv\.kr\/15\/(\d+)"[\s\S]*?<\/td>\s*<td class="td_name[\s\S]*?<\/td>\s*<td class="td_num[^"]*">\s*([\d,]+)\s*<\/td>\s*<td class="td_num[^"]*">\s*[\d,]+\s*<\/td>\s*<td class="td_num[^"]*">\s*[\d,-]+\s*<\/td>\s*<td class="td_datetime[^"]*">\s*([^<]+)\s*<\/td>/gi;
+    var m;
+    while ((m = re.exec(html))) {
+      posts.push({
+        id: m[1],
+        views: parseInt(String(m[2]).replace(/,/g, ""), 10) || 0,
+        time: parseListDate(m[3]),
       });
     }
     return posts;
@@ -297,6 +312,8 @@
   var GM_ALLOW = /^https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\//i;
   var GM_ABS =
     /https?:\/\/cdn\.gamemeca\.com\/gmboard\/fam_gallery\/[^\s"'<>)\\]+/gi;
+  var JJ_ALLOW = /^https?:\/\/img\d*\.jjtv\.kr\//i;
+  var JJ_ABS = /https?:\/\/img\d*\.jjtv\.kr\/[^\s"'<>)\\]+/gi;
 
   async function scrapeBobae(p, addImgs) {
     var LIST = "https://www.bobaedream.co.kr/list?code=nsfw";
@@ -395,6 +412,48 @@
     }
   }
 
+  async function scrapeJjtv(p, addImgs) {
+    var LIST = "https://jjtv.kr/15";
+    var VIEW = "https://jjtv.kr/15/";
+    var collected = [];
+
+    for (var page = 1; page <= p.pages; page++) {
+      throwIfAborted();
+      setStatus("목록 수집 중... " + page + "/" + p.pages);
+      try {
+        var html = await fetchText(LIST + (page > 1 ? "?page=" + page : ""));
+        collected = collected.concat(parseJjtvPosts(html));
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+      }
+    }
+
+    var ranked = filterAndRank(mergePosts(collected), p);
+    var take = Math.min(ranked.length, p.take);
+    setStatus("조회수순 정리 · " + take + "개");
+
+    for (var n = 0; n < take; n++) {
+      throwIfAborted();
+      var post = ranked[n];
+      setStatus(
+        "사진 모으는 중... " + (n + 1) + "/" + take + " · 조회 " + post.views
+      );
+      try {
+        var imgs = extractByAllow(
+          await fetchText(VIEW + post.id),
+          JJ_ALLOW,
+          JJ_ABS
+        ).filter(function (u) {
+          // 목록용 0000 썸네일 제외
+          return !/_0000\.(jpe?g|png|gif|webp)(\?|$)/i.test(u);
+        });
+        addImgs(imgs, post.views);
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+      }
+    }
+  }
+
   function renderGallery(items) {
     galleryEl.innerHTML = "";
     for (var i = 0; i < items.length; i++) {
@@ -473,6 +532,7 @@
     try {
       await scrapeBobae(p, addImgs);
       await scrapeGamemeca(p, addImgs);
+      await scrapeJjtv(p, addImgs);
 
       setRunning(false);
       if (!items.length) {
@@ -505,5 +565,5 @@
     });
   });
 
-  setStatus("5.4 · 일간/주간/월간 = 기간 안 조회수순. 검색 눌러봐.", "");
+  setStatus("5.5 · 일간/주간/월간 = 기간 안 조회수순. 검색 눌러봐.", "");
 })();
